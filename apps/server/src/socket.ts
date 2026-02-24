@@ -3,13 +3,11 @@ import { C2S } from "@okey/shared";
 import { roomRegistry } from "./rooms/roomRegistry.js";
 import { toClientView } from "./game/gameLogic.js";
 
-
 export function registerSocketHandlers(io: Server) {
   function emitGameStateToRoom(roomId: string) {
     const state = roomRegistry.getRoomState(roomId);
     if (!state) return;
 
-    // send personalized view to each socket
     const sockets = roomRegistry.getRoomSockets(roomId);
     for (const socketId of sockets) {
       const meta = roomRegistry.getPlayerMeta(socketId);
@@ -18,29 +16,31 @@ export function registerSocketHandlers(io: Server) {
       const view = toClientView(state, meta.playerId);
       io.to(socketId).emit("game:state", {
         state: view,
-        version: roomRegistry.getRoomVersion(roomId)
+        version: roomRegistry.getRoomVersion(roomId),
+        youPlayerId: meta.playerId
       });
     }
   }
 
   io.on("connection", (socket) => {
-    console.log("connected", socket.id);
-
     socket.on("room:join", (payload, ack) => {
       const parsed = C2S.roomJoin.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
-      const { roomId, name } = parsed.data;
+      const { roomId, name, token } = parsed.data;
 
-      const result = roomRegistry.joinRoom({ roomId, socketId: socket.id, name });
+      const joinArgs =
+        token === undefined
+          ? { roomId, socketId: socket.id, name }
+          : { roomId, socketId: socket.id, name, token };
+
+      const result = roomRegistry.joinRoom(joinArgs);
       if (!result.ok) return ack?.({ ok: false, error: result.error });
 
       socket.join(roomId);
 
-      // emit game state (lobby state is a game state too)
       emitGameStateToRoom(roomId);
-
-      ack?.({ ok: true, playerId: result.playerId, roomId });
+      ack?.({ ok: true, playerId: result.playerId, roomId, token: result.token });
     });
 
     socket.on("room:ready", (payload, ack) => {
@@ -51,7 +51,7 @@ export function registerSocketHandlers(io: Server) {
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
       const res = roomRegistry.setReady(socket.id, parsed.data.ready);
-      if (!res.ok) return ack?.({ ok: false, error: res.error });
+      if (!res.ok) return ack?.(res);
 
       emitGameStateToRoom(meta.roomId);
       ack?.({ ok: true });
@@ -62,18 +62,21 @@ export function registerSocketHandlers(io: Server) {
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
       const res = roomRegistry.startGame(socket.id);
-      if (!res.ok) return ack?.({ ok: false, error: res.error });
+      if (!res.ok) return ack?.(res);
 
       emitGameStateToRoom(meta.roomId);
       ack?.({ ok: true });
     });
 
-    socket.on("move:draw", (_payload, ack) => {
+    socket.on("move:draw", (payload, ack) => {
+      const parsed = C2S.moveDraw.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
       const meta = roomRegistry.getPlayerMeta(socket.id);
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
-      const res = roomRegistry.draw(socket.id);
-      if (!res.ok) return ack?.({ ok: false, error: res.error });
+      const res = roomRegistry.draw(socket.id, parsed.data.source);
+      if (!res.ok) return ack?.(res);
 
       emitGameStateToRoom(meta.roomId);
       ack?.({ ok: true });
@@ -86,8 +89,8 @@ export function registerSocketHandlers(io: Server) {
       const meta = roomRegistry.getPlayerMeta(socket.id);
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
-      const res = roomRegistry.discard(socket.id, parsed.data.tile);
-      if (!res.ok) return ack?.({ ok: false, error: res.error });
+      const res = roomRegistry.discard(socket.id, parsed.data.tileId);
+      if (!res.ok) return ack?.(res);
 
       emitGameStateToRoom(meta.roomId);
       ack?.({ ok: true });
@@ -95,9 +98,7 @@ export function registerSocketHandlers(io: Server) {
 
     socket.on("disconnect", () => {
       const updates = roomRegistry.onDisconnect(socket.id);
-      for (const u of updates) {
-        emitGameStateToRoom(u.roomId);
-      }
+      for (const u of updates) emitGameStateToRoom(u.roomId);
     });
   });
 }

@@ -1,42 +1,30 @@
 import { randomUUID } from "crypto";
-import type { RoomId, PlayerId, Tile, GameStateServer } from "@okey/shared";
-import { startTurnGame } from "../game/gameLogic.js";
+import type { PlayerId, RoomId, GameStateServer, TileId } from "@okey/shared";
 import type { LobbyPlayer } from "./roomTypes.js";
-
-
-type JoinArgs = { roomId: RoomId; socketId: string; name: string };
+import { reduce } from "../game/reducer.js";
 
 type RoomRuntime = {
   roomId: RoomId;
   players: LobbyPlayer[];
   state: GameStateServer;
   version: number;
+
+  // reconnect
+  tokenToPlayerId: Map<string, PlayerId>;
+  playerIdToToken: Map<PlayerId, string>;
 };
 
+type JoinArgs = { roomId: RoomId; socketId: string; name: string; token?: string };
 
 type JoinResult =
-  | { ok: true; playerId: PlayerId; roomId: RoomId }
+  | { ok: true; playerId: PlayerId; roomId: RoomId; token: string }
   | { ok: false; error: "ROOM_FULL" | "NAME_TAKEN" };
 
-type ReadyResult =
-  | { ok: true }
-  | { ok: false; error: "NOT_IN_ROOM" };
-
-type StartResult =
-  | { ok: true }
-  | { ok: false; error: "NOT_IN_ROOM" | "NOT_HOST" | "NEED_4_PLAYERS" | "NOT_ALL_READY" | "BAD_PHASE" };
-
-type DrawResult =
-  | { ok: true }
-  | { ok: false; error: "NOT_IN_ROOM" | "BAD_PHASE" | "NOT_YOUR_TURN" | "INVALID_STEP" | "DECK_EMPTY" };
-
-type DiscardResult =
-  | { ok: true }
-  | { ok: false; error: "NOT_IN_ROOM" | "BAD_PHASE" | "NOT_YOUR_TURN" | "INVALID_STEP" | "TILE_NOT_IN_HAND" };
+type SimpleResult = { ok: true } | { ok: false; error: string };
 
 export class RoomRegistry {
   private rooms = new Map<RoomId, RoomRuntime>();
-  private socketToPlayer = new Map<string, { roomId: RoomId; playerId: PlayerId }>();
+  private socketToMeta = new Map<string, { roomId: RoomId; playerId: PlayerId }>();
 
   private getOrCreate(roomId: RoomId): RoomRuntime {
     let room = this.rooms.get(roomId);
@@ -45,7 +33,9 @@ export class RoomRegistry {
         roomId,
         players: [],
         state: { phase: "lobby", roomId, players: [] },
-        version: 0
+        version: 0,
+        tokenToPlayerId: new Map(),
+        playerIdToToken: new Map()
       };
       this.rooms.set(roomId, room);
     }
@@ -55,157 +45,124 @@ export class RoomRegistry {
   joinRoom(args: JoinArgs): JoinResult {
     const room = this.getOrCreate(args.roomId);
 
+    // Reconnect flow: if token matches, reattach socketId to existing player
+    if (args.token) {
+      const existingPlayerId = room.tokenToPlayerId.get(args.token);
+      if (existingPlayerId) {
+        const p = room.players.find((x) => x.playerId === existingPlayerId);
+        if (p) {
+          p.socketId = args.socketId;
+          this.socketToMeta.set(args.socketId, { roomId: room.roomId, playerId: existingPlayerId });
+          // keep name as-is or update it (we'll keep existing name)
+          return { ok: true, playerId: existingPlayerId, roomId: room.roomId, token: args.token };
+        }
+      }
+    }
+
     if (room.players.length >= 4) return { ok: false, error: "ROOM_FULL" };
     if (room.players.some((p) => p.name === args.name)) return { ok: false, error: "NAME_TAKEN" };
 
     const playerId = randomUUID();
-    const player: LobbyPlayer = {
+    const token = randomUUID() + randomUUID(); // cheap long token
+
+    room.players.push({
       playerId,
       name: args.name,
       socketId: args.socketId,
       ready: false
-    };
+    });
 
-    room.players.push(player);
-    this.socketToPlayer.set(args.socketId, { roomId: room.roomId, playerId });
+    room.tokenToPlayerId.set(token, playerId);
+    room.playerIdToToken.set(playerId, token);
+    this.socketToMeta.set(args.socketId, { roomId: room.roomId, playerId });
 
-    // keep state players in sync
+    // sync lobby state from players list
     room.state = {
       phase: "lobby",
       roomId: room.roomId,
       players: room.players.map((p) => ({ playerId: p.playerId, name: p.name, ready: p.ready }))
     };
+    room.version++;
 
-    return { ok: true, playerId, roomId: room.roomId };
+    return { ok: true, playerId, roomId: room.roomId, token };
   }
 
-  setReady(socketId: string, ready: boolean): ReadyResult {
-    const meta = this.socketToPlayer.get(socketId);
+  setReady(socketId: string, ready: boolean): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
     if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
 
     const room = this.rooms.get(meta.roomId);
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
 
+    // mirror readiness into players list (used for host/seat order)
     const p = room.players.find((x) => x.playerId === meta.playerId);
-    if (!p) return { ok: false, error: "NOT_IN_ROOM" };
+    if (p) p.ready = ready;
 
-    p.ready = ready;
-
-    // sync lobby state
-    if (room.state.phase === "lobby") {
-      room.state = {
-        phase: "lobby",
-        roomId: room.roomId,
-        players: room.players.map((pl) => ({ playerId: pl.playerId, name: pl.name, ready: pl.ready }))
-      };
-    } else {
-      // also keep player readiness mirrored in turn state
-      room.state = {
-        ...room.state,
-        players: room.players.map((pl) => ({ playerId: pl.playerId, name: pl.name, ready: pl.ready }))
-      } as GameStateServer;
+    try {
+      room.state = reduce(room.state, { type: "SET_READY", playerId: meta.playerId, ready });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
     }
-
-    room.version++;
-    return { ok: true };
   }
 
-  startGame(socketId: string): StartResult {
-    const meta = this.socketToPlayer.get(socketId);
+  startGame(socketId: string): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
     if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
-
     const room = this.rooms.get(meta.roomId);
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
 
-    const hostId = room.players[0]?.playerId;
-    if (!hostId) return { ok: false, error: "NEED_4_PLAYERS" };
-    if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
-
-    if (room.state.phase !== "lobby") return { ok: false, error: "BAD_PHASE" };
-    if (room.players.length !== 4) return { ok: false, error: "NEED_4_PLAYERS" };
-    if (!room.players.every((p) => p.ready)) return { ok: false, error: "NOT_ALL_READY" };
-
-    room.state = startTurnGame(room.state);
-    room.version++;
-    return { ok: true };
+    try {
+      room.state = reduce(room.state, { type: "START_GAME", playerId: meta.playerId });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   }
 
-  draw(socketId: string): DrawResult {
-    const meta = this.socketToPlayer.get(socketId);
+  draw(socketId: string, source: "deck" | "prevDiscard"): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
     if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
-
     const room = this.rooms.get(meta.roomId);
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
 
-    const state = room.state;
-    if (state.phase !== "turn") return { ok: false, error: "BAD_PHASE" };
-    if (state.currentPlayerId !== meta.playerId) return { ok: false, error: "NOT_YOUR_TURN" };
-    if (state.turnStep !== "mustDraw") return { ok: false, error: "INVALID_STEP" };
-
-    const tile = state.deck.pop();
-    if (tile == null) return { ok: false, error: "DECK_EMPTY" };
-
-    state.hands[meta.playerId]!.push(tile);
-    state.turnStep = "mustDiscard";
-
-    room.version++;
-    return { ok: true };
+    try {
+      room.state = reduce(room.state, { type: "DRAW", playerId: meta.playerId, source });      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   }
 
-  discard(socketId: string, tile: Tile): DiscardResult {
-    const meta = this.socketToPlayer.get(socketId);
+  discard(socketId: string, tileId: TileId): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
     if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
-
     const room = this.rooms.get(meta.roomId);
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
 
-    const state = room.state;
-    if (state.phase !== "turn") return { ok: false, error: "BAD_PHASE" };
-    if (state.currentPlayerId !== meta.playerId) return { ok: false, error: "NOT_YOUR_TURN" };
-    if (state.turnStep !== "mustDiscard") return { ok: false, error: "INVALID_STEP" };
-
-    const hand = state.hands[meta.playerId]!;
-    const idx = hand.indexOf(tile);
-    if (idx === -1) return { ok: false, error: "TILE_NOT_IN_HAND" };
-
-    hand.splice(idx, 1);
-    state.discardPile.push(tile);
-
-    // advance to next player in seating order
-    const order = state.players.map((p) => p.playerId);
-    const curIdx = order.indexOf(state.currentPlayerId);
-    const next = order[(curIdx + 1) % order.length]!;
-    state.currentPlayerId = next;
-    state.turnStep = "mustDraw";
-
-    room.version++;
-    return { ok: true };
+    try {
+      room.state = reduce(room.state, { type: "DISCARD", playerId: meta.playerId, tileId });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
   }
 
   onDisconnect(socketId: string): Array<{ roomId: RoomId }> {
-    const meta = this.socketToPlayer.get(socketId);
+    const meta = this.socketToMeta.get(socketId);
     if (!meta) return [];
 
     const room = this.rooms.get(meta.roomId);
     if (!room) return [];
 
-    room.players = room.players.filter((p) => p.socketId !== socketId);
-    this.socketToPlayer.delete(socketId);
+    // don’t delete player (reconnect), just clear socket binding
+    this.socketToMeta.delete(socketId);
 
-    // if room empty, delete it
-    if (room.players.length === 0) {
-      this.rooms.delete(meta.roomId);
-      return [];
-    }
-
-    // reset to lobby if someone leaves during game (simple MVP)
-    room.state = {
-      phase: "lobby",
-      roomId: room.roomId,
-      players: room.players.map((p) => ({ playerId: p.playerId, name: p.name, ready: false }))
-    };
-    room.players.forEach((p) => (p.ready = false));
-    room.version++;
+    const p = room.players.find((x) => x.playerId === meta.playerId);
+    if (p) p.socketId = "";
 
     return [{ roomId: room.roomId }];
   }
@@ -219,13 +176,14 @@ export class RoomRegistry {
   }
 
   getPlayerMeta(socketId: string): { roomId: RoomId; playerId: PlayerId } | undefined {
-    return this.socketToPlayer.get(socketId);
+    return this.socketToMeta.get(socketId);
   }
 
+  /** sockets currently connected in room */
   getRoomSockets(roomId: RoomId): string[] {
     const room = this.rooms.get(roomId);
     if (!room) return [];
-    return room.players.map((p) => p.socketId);
+    return room.players.map((p) => p.socketId).filter(Boolean);
   }
 }
 

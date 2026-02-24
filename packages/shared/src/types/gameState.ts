@@ -1,4 +1,4 @@
-import type { PlayerId, RoomId, Tile } from "./ids.js";
+import type { PlayerId, RoomId, Tile, OkeyInfo } from "./ids.js";
 
 export type LobbyPlayerPublic = {
   playerId: PlayerId;
@@ -20,15 +20,20 @@ export type TurnStateServer = {
   currentPlayerId: PlayerId;
   turnStep: "mustDraw" | "mustDiscard";
 
-  deck: Tile[]; // server keeps full deck
-  discardPile: Tile[];
+  deck: Tile[];
+  discardPiles: Record<PlayerId, Tile[]>;
 
   hands: Record<PlayerId, Tile[]>;
+
+  /** opened indicator tile */
+  indicator: Tile;
+  /** okey derived from indicator */
+  okey: OkeyInfo;
 };
 
 export type GameStateServer = LobbyState | TurnStateServer;
 
-/** What clients receive (no deck order, no other hands). */
+/** What clients receive (no deck order, no other hands) */
 export type TurnStateClient = {
   phase: "turn";
   roomId: RoomId;
@@ -38,10 +43,13 @@ export type TurnStateClient = {
   turnStep: "mustDraw" | "mustDiscard";
 
   deckCount: number;
-  discardPile: Tile[];
+  discardPiles: Record<PlayerId, Tile[]>;
 
   yourHand: Tile[];
   otherHandCounts: Record<PlayerId, number>;
+
+  indicator: Tile;
+  okey: OkeyInfo;
 };
 
 export type GameStateClient = LobbyState | TurnStateClient;

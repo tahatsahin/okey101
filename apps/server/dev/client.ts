@@ -1,135 +1,113 @@
 import { io, type Socket } from "socket.io-client";
 import readline from "node:readline";
-import type { GameStateClient } from "@okey/shared";
+import type { GameStateClient, Tile } from "@okey/shared";
 
+type JoinAck =
+  | { ok: true; playerId: string; roomId: string; token: string }
+  | { ok: false; error: string };
 
-type Ack = (res: any) => void;
+type SimpleAck = { ok: true } | { ok: false; error: string };
 
 const SERVER_URL = process.env.SERVER_URL ?? "http://localhost:3001";
 const ROOM_ID = process.env.ROOM_ID ?? "room1";
 const NAME = process.env.NAME ?? `p-${Math.floor(Math.random() * 1000)}`;
+const TOKEN = process.env.TOKEN; // optional reconnect token
 
-const socket: Socket = io(SERVER_URL, {
-  transports: ["websocket"], // force websocket, simpler for testing
-});
+const socket: Socket = io(SERVER_URL, { transports: ["websocket"] });
 
-let lastState: { version: number; state: GameStateClient } | null = null;
+let last: { version: number; state: GameStateClient; youPlayerId?: string } | null = null;
+let myToken: string | undefined = TOKEN;
 
 socket.on("connect", () => {
-  log(`connected as socket.id=${socket.id}`);
+  log(`connected socket.id=${socket.id}`);
   joinRoom();
 });
 
-socket.on("disconnect", () => {
-  log("disconnected");
-});
-
-socket.on("connect_error", (err) => {
-  log(`connect_error: ${String(err?.message ?? err)}`);
-});
-
-socket.on("game:state", (payload) => {
-  lastState = payload as { version: number; state: GameStateClient };
-  log(`game:state v=${lastState.version}`);
-  pretty(lastState.state);
+socket.on("game:state", (payload: unknown) => {
+  last = payload as any;
+  log(`game:state v=${last?.version ?? "?"}`);
+  pretty(last?.state);
 });
 
 function joinRoom() {
-  emitWithAck("room:join", { roomId: ROOM_ID, name: NAME }, (res) => {
-    log(`join ack: ${JSON.stringify(res)}`);
-    help();
+  socket.emit("room:join", { roomId: ROOM_ID, name: NAME, token: myToken }, (ack: JoinAck) => {
+    log(`join ack: ${JSON.stringify(ack)}`);
+    if (ack.ok) {
+      myToken = ack.token;
+      log(`SAVE THIS TOKEN for reconnect: ${myToken}`);
+      help();
+    }
   });
-}
-
-function emitWithAck(event: string, payload: any, ack?: Ack) {
-  socket.emit(event, payload, (res: any) => ack?.(res));
 }
 
 function help() {
   console.log(`
 Commands:
-  help                 show this help
-  ready on|off         toggle ready
-  start                start game (host only = first joined)
-  draw                 draw tile (if your turn and mustDraw)
-  discard <n>           discard tile number n (mustDiscard)
-  hand                 show yourHand from last state
-  state                show last raw state (trimmed)
-  quit                 exit
-`);
-}
+  help
+  ready on|off
+  start
+  draw
+  hand
+  discard <tileId>
+  quit
 
-function pretty(obj: any) {
-  // keep output readable
-  console.dir(obj, { depth: 6, colors: true });
+Tip:
+  - Use 'hand' to see tile ids.
+  - Discard uses tileId now (e.g. discard n-red-5-1)
+`);
 }
 
 function log(msg: string) {
   console.log(`[${NAME}] ${msg}`);
 }
 
-// ---- CLI ----
-const rl = readline.createInterface({
-  input: process.stdin,
-  output: process.stdout,
-});
+function pretty(obj: any) {
+  console.dir(obj, { depth: 6, colors: true });
+}
+
+function fmtTile(t: Tile): string {
+  if (t.kind === "fakeJoker") return `${t.id} (fakeJoker)`;
+  return `${t.id} (${t.color} ${t.value})`;
+}
+
+const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 
 rl.on("line", (line) => {
-  const [cmd, a1] = line.trim().split(/\s+/, 2);
-
+  const [cmd, arg] = line.trim().split(/\s+/, 2);
   if (!cmd) return;
 
   switch (cmd) {
     case "help":
       help();
-      return;
+      break;
 
     case "ready": {
-      const on = a1 === "on";
-      const off = a1 === "off";
-      if (!on && !off) {
-        log(`usage: ready on|off`);
-        return;
-      }
-      emitWithAck("room:ready", { ready: on }, (res) => log(`ready ack: ${JSON.stringify(res)}`));
-      return;
+      const ready = arg === "on" ? true : arg === "off" ? false : null;
+      if (ready == null) return log("usage: ready on|off");
+      socket.emit("room:ready", { ready }, (ack: SimpleAck) => log(`ready ack: ${JSON.stringify(ack)}`));
+      break;
     }
 
     case "start":
-      emitWithAck("game:start", {}, (res) => log(`start ack: ${JSON.stringify(res)}`));
-      return;
+      socket.emit("game:start", {}, (ack: SimpleAck) => log(`start ack: ${JSON.stringify(ack)}`));
+      break;
 
     case "draw":
-      emitWithAck("move:draw", {}, (res) => log(`draw ack: ${JSON.stringify(res)}`));
-      return;
-
-    case "discard": {
-      const n = Number(a1);
-      if (!Number.isFinite(n)) {
-        log(`usage: discard <number>`);
-        return;
-      }
-      emitWithAck("move:discard", { tile: n }, (res) => log(`discard ack: ${JSON.stringify(res)}`));
-      return;
-    }
+      socket.emit("move:draw", {}, (ack: SimpleAck) => log(`draw ack: ${JSON.stringify(ack)}`));
+      break;
 
     case "hand": {
-      const state = lastState?.state;
-      if (!state) {
-        log("no state yet");
-        return;
-      }
-      if (state.phase !== "turn") {
-        log(`not in turn phase (phase=${state.phase})`);
-        return;
-      }
-      log(`yourHand: ${JSON.stringify(state.yourHand)}`);
+      const s = last?.state;
+      if (!s) return log("no state yet");
+      if (s.phase !== "turn") return log(`phase=${s.phase} (no hand)`);
+      console.log(s.yourHand.map(fmtTile).join("\n"));
+      break;
     }
 
-    case "state": {
-      // avoid spamming: print the state only
-      pretty(lastState?.state);
-      return;
+    case "discard": {
+      if (!arg) return log("usage: discard <tileId>");
+      socket.emit("move:discard", { tileId: arg }, (ack: SimpleAck) => log(`discard ack: ${JSON.stringify(ack)}`));
+      break;
     }
 
     case "quit":
@@ -139,6 +117,6 @@ rl.on("line", (line) => {
       process.exit(0);
 
     default:
-      log(`unknown command: ${cmd} (type 'help')`);
+      log(`unknown command: ${cmd}`);
   }
 });

@@ -4,7 +4,8 @@ import { z } from "zod";
 export const C2S = {
   roomJoin: z.object({
     roomId: z.string().min(3).max(32),
-    name: z.string().min(1).max(24)
+    name: z.string().min(1).max(24),
+    token: z.string().min(10).optional()
   }),
 
   roomReady: z.object({
@@ -13,10 +14,12 @@ export const C2S = {
 
   gameStart: z.object({}),
 
-  moveDraw: z.object({}),
+  moveDraw: z.object({
+    source: z.enum(["deck", "prevDiscard"])
+  }),
 
   moveDiscard: z.object({
-    tile: z.number()
+    tileId: z.string().min(1)
   })
 } as const;
 
@@ -24,9 +27,8 @@ export const C2S = {
 export const S2C = {
   gameState: z.object({
     version: z.number().int().nonnegative(),
-    // We'll keep this as unknown in schema and rely on TS type for now (simple).
-    // Later we can add full Zod schema for GameStateClient.
-    state: z.unknown()
+    state: z.unknown(), // MVP: validate later with full schema
+    youPlayerId: z.string().optional()
   }),
 
   error: z.object({
