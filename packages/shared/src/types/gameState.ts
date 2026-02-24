@@ -12,44 +12,45 @@ export type LobbyState = {
   players: LobbyPlayerPublic[];
 };
 
+export type TurnStep = "mustDraw" | "mustDiscard";
+
 export type TurnStateServer = {
   phase: "turn";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
-
   currentPlayerId: PlayerId;
-  turnStep: "mustDraw" | "mustDiscard";
+  turnStep: TurnStep;
 
   deck: Tile[];
-  discardPiles: Record<PlayerId, Tile[]>;
 
+  discardPiles: Record<PlayerId, Tile[]>;
   hands: Record<PlayerId, Tile[]>;
 
-  /** opened indicator tile */
   indicator: Tile;
-  /** okey derived from indicator */
   okey: OkeyInfo;
+  tableMelds?: { meldId: string; playerId: PlayerId; tiles: Tile[] }[];
+  penalties?: { playerId: PlayerId; points: number; reason?: string }[];
 };
 
 export type GameStateServer = LobbyState | TurnStateServer;
 
-/** What clients receive (no deck order, no other hands) */
 export type TurnStateClient = {
   phase: "turn";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
-
   currentPlayerId: PlayerId;
-  turnStep: "mustDraw" | "mustDiscard";
+  turnStep: TurnStep;
 
   deckCount: number;
-  discardPiles: Record<PlayerId, Tile[]>;
 
+  discardPiles: Record<PlayerId, Tile[]>;
   yourHand: Tile[];
   otherHandCounts: Record<PlayerId, number>;
 
   indicator: Tile;
   okey: OkeyInfo;
+  tableMelds: { meldId: string; playerId: PlayerId; tiles: Tile[] }[];
+  penalties: { playerId: PlayerId; points: number; reason?: string }[];
 };
 
 export type GameStateClient = LobbyState | TurnStateClient;

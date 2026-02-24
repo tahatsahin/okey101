@@ -78,18 +78,35 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
 
   const { indicator, okey } = pickIndicatorAndOkey(deck);
 
-  const hands: Record<PlayerId, Tile[]> = Object.fromEntries(playerIds.map((id) => [id, []]));
+  const hands: Record<PlayerId, Tile[]> = Object.fromEntries(playerIds.map((id) => [id, [] as Tile[]]));
 
-  // MVP dealing: 14 each
-  for (let round = 0; round < 21; round++) {
+  // Deal according to AGENTS.md: players get 21 tiles, player to dealer's right gets 22
+  // Assume dealer is players[0]; first player to act is dealer's right
+  const dealerIndex = 0;
+  const firstIdx = (dealerIndex - 1 + playerIds.length) % playerIds.length;
+  // distribute until targets met
+  const targets: Record<PlayerId, number> = Object.fromEntries(playerIds.map((id) => [id, 21]));
+  targets[playerIds[firstIdx]!] = 22;
+
+  let cur = firstIdx;
+  while (true) {
+    let allDone = true;
     for (const pid of playerIds) {
+      if (hands[pid].length < targets[pid]) { allDone = false; break; }
+    }
+    if (allDone) break;
+
+    const pid = playerIds[cur]!;
+    if (hands[pid].length < targets[pid]) {
       const t = deck.pop();
       if (!t) throw new Error("DECK_EMPTY");
       hands[pid].push(t);
     }
+
+    cur = (cur + 1) % playerIds.length;
   }
 
-  const currentPlayerId = playerIds[0]!;
+  const currentPlayerId = playerIds[firstIdx]!;
 
   return {
     phase: "turn",
@@ -97,7 +114,8 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     players: prev.players,
 
     currentPlayerId,
-    turnStep: "mustDraw",
+    // First player has 22 tiles — they skip drawing and go straight to discard
+    turnStep: "mustDiscard",
 
     deck,
     discardPiles: Object.fromEntries(playerIds.map((id) => [id, []])),
@@ -105,7 +123,9 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     hands,
 
     indicator,
-    okey
+    okey,
+    tableMelds: [],
+    penalties: []
   };
 }
 
@@ -135,7 +155,9 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
     otherHandCounts,
 
     indicator: s.indicator,
-    okey: s.okey
+    okey: s.okey,
+    tableMelds: s.tableMelds ?? [],
+    penalties: s.penalties ?? []
   };
 
   return view;

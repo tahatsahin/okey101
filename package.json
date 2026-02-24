@@ -5,8 +5,15 @@
     "apps/*",
     "packages/*"
   ],
+  "scripts": {
+    "dev:server": "npm -w apps/server run dev",
+    "dev:web": "npm -w apps/web run dev",
+    "dev": "concurrently -n server,web -c auto \"npm run dev:server\" \"npm run dev:web\"",
+    "typecheck": "tsc -b"
+  },
   "devDependencies": {
     "typescript": "^5.x",
-    "@types/node": "^20.x"
+    "@types/node": "^20.x",
+    "concurrently": "9.0.0"
   }
 }

@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import { C2S } from "@okey/shared";
+import { C2S, C2S_EVENT, S2C_EVENT, C2S_EXTRA } from "@okey/shared";
 import { roomRegistry } from "./rooms/roomRegistry.js";
 import { toClientView } from "./game/gameLogic.js";
 
@@ -23,7 +23,7 @@ export function registerSocketHandlers(io: Server) {
   }
 
   io.on("connection", (socket) => {
-    socket.on("room:join", (payload, ack) => {
+    socket.on(C2S_EVENT.roomJoin, (payload, ack) => {
       const parsed = C2S.roomJoin.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -43,7 +43,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true, playerId: result.playerId, roomId, token: result.token });
     });
 
-    socket.on("room:ready", (payload, ack) => {
+    socket.on(C2S_EVENT.roomReady, (payload, ack) => {
       const parsed = C2S.roomReady.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -57,7 +57,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("game:start", (_payload, ack) => {
+    socket.on(C2S_EVENT.gameStart, (_payload, ack) => {
       const meta = roomRegistry.getPlayerMeta(socket.id);
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
@@ -68,7 +68,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("move:draw", (payload, ack) => {
+    socket.on(C2S_EVENT.moveDraw, (payload, ack) => {
       const parsed = C2S.moveDraw.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -82,7 +82,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("move:discard", (payload, ack) => {
+    socket.on(C2S_EVENT.moveDiscard, (payload, ack) => {
       const parsed = C2S.moveDiscard.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -90,6 +90,64 @@ export function registerSocketHandlers(io: Server) {
       if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
 
       const res = roomRegistry.discard(socket.id, parsed.data.tileId);
+      if (!res.ok) return ack?.(res);
+
+      emitGameStateToRoom(meta.roomId);
+      ack?.({ ok: true });
+    });
+
+    // --- new meld/layoff/take-and-meld handlers ---
+
+    socket.on("move:open", (payload, ack) => {
+      const parsed = C2S_EXTRA.moveOpen.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
+      const meta = roomRegistry.getPlayerMeta(socket.id);
+      if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
+
+      const res = roomRegistry.openMeld(socket.id, parsed.data.melds);
+      if (!res.ok) return ack?.(res);
+
+      emitGameStateToRoom(meta.roomId);
+      ack?.({ ok: true });
+    });
+
+    socket.on("move:layoff", (payload, ack) => {
+      const parsed = C2S_EXTRA.moveLayoff.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
+      const meta = roomRegistry.getPlayerMeta(socket.id);
+      if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
+
+      const res = roomRegistry.layoff(socket.id, parsed.data.tableMeldId, parsed.data.tileIds);
+      if (!res.ok) return ack?.(res);
+
+      emitGameStateToRoom(meta.roomId);
+      ack?.({ ok: true });
+    });
+
+    socket.on("move:takeAndMeld", (payload, ack) => {
+      const parsed = C2S_EXTRA.moveTakeAndMeld.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
+      const meta = roomRegistry.getPlayerMeta(socket.id);
+      if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
+
+      const res = roomRegistry.takeAndMeld(socket.id, parsed.data.fromPlayerId, parsed.data.melds);
+      if (!res.ok) return ack?.(res);
+
+      emitGameStateToRoom(meta.roomId);
+      ack?.({ ok: true });
+    });
+
+    socket.on("move:reorder", (payload, ack) => {
+      const parsed = C2S_EXTRA.moveReorder.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
+      const meta = roomRegistry.getPlayerMeta(socket.id);
+      if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
+
+      const res = roomRegistry.reorderHand(socket.id, parsed.data.tileIds);
       if (!res.ok) return ack?.(res);
 
       emitGameStateToRoom(meta.roomId);

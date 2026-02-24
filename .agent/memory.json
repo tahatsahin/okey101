@@ -1,0 +1,12 @@
+{
+  "createdAt": "2026-02-24T00:00:00.000Z",
+  "lastUpdated": "2026-02-24T12:00:00.000Z",
+  "notes": [
+    "2026-02-24: Created tileUtils.ts with domain helpers (deal, pickIndicator).",
+    "2026-02-24: Added validate.ts with basic meld/layoff/opening validators."
+  ],
+  "shortTerm": {
+    "currentTask": "write-and-run-tests"
+  },
+  "longTerm": {}
+}

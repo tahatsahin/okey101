@@ -1,0 +1,10 @@
+{
+  "agent": "github-copilot",
+  "version": "1",
+  "timezone": "UTC",
+  "owner": "tahatsahin",
+  "preferences": {
+    "createTests": true,
+    "useZod": true
+  }
+}

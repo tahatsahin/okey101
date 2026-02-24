@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "tsx test/index.ts",
     "dev": "tsx watch src/index.ts"
   },
   "keywords": [],
@@ -15,7 +15,6 @@
     "express": "^5.2.1",
     "shared": "file:../../packages/shared",
     "socket.io": "^4.8.3",
-    "socket.io-client": "^4.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {

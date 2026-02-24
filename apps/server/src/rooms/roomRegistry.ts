@@ -151,6 +151,66 @@ export class RoomRegistry {
     }
   }
 
+  openMeld(socketId: string, melds: string[][]): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+
+    try {
+      room.state = reduce(room.state, { type: "OPEN_MELD", playerId: meta.playerId, melds });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
+  layoff(socketId: string, tableMeldId: string, tileIds: string[]): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+
+    try {
+      room.state = reduce(room.state, { type: "LAYOFF", playerId: meta.playerId, tableMeldId, tileIds });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
+  takeAndMeld(socketId: string, fromPlayerId: string, melds: string[][]): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+
+    try {
+      room.state = reduce(room.state, { type: "TAKE_AND_MELD", playerId: meta.playerId, fromPlayerId, melds });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
+  reorderHand(socketId: string, tileIds: string[]): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+
+    try {
+      room.state = reduce(room.state, { type: "REORDER_HAND", playerId: meta.playerId, tileIds });
+      room.version++;
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
   onDisconnect(socketId: string): Array<{ roomId: RoomId }> {
     const meta = this.socketToMeta.get(socketId);
     if (!meta) return [];
