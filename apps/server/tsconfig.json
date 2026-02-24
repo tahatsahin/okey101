@@ -2,8 +2,8 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "module": "NodeNext",
+    "rootDir": ".",
+    "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src", "dev", "../../packages/shared/src"]
 }

@@ -11,8 +11,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@okey/shared": "file:../../packages/shared",
     "express": "^5.2.1",
+    "shared": "file:../../packages/shared",
     "socket.io": "^4.8.3",
+    "socket.io-client": "^4.8.3",
     "zod": "^4.3.6"
   },
   "devDependencies": {
@@ -21,4 +24,3 @@
   },
   "type": "module"
 }
-
