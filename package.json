@@ -1,0 +1,12 @@
+{
+  "name": "okey101",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "devDependencies": {
+    "typescript": "^5.x",
+    "@types/node": "^20.x"
+  }
+}
