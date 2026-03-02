@@ -4,6 +4,7 @@ export type LobbyPlayerPublic = {
   playerId: PlayerId;
   name: string;
   ready: boolean;
+  isBot?: boolean;
 };
 
 export type LobbyState = {
@@ -12,7 +13,7 @@ export type LobbyState = {
   players: LobbyPlayerPublic[];
 };
 
-export type TurnStep = "mustDraw" | "mustDiscard";
+export type TurnStep = "mustDraw" | "mustDiscard" | "mustMeldDiscard";
 
 export type TableMeldTile = Tile & {
   assigned?: { color: TileColor; value: TileValue };
@@ -34,6 +35,7 @@ export type TurnStateServer = {
   players: LobbyPlayerPublic[];
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
+  takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
   handHistory: HandResult[];
   dealerIndex: number;
@@ -56,6 +58,9 @@ export type HandEndState = {
   result: HandResult;
   handHistory: HandResult[];
   dealerIndex: number;
+  roundNumber: number;
+  maxRounds: number;
+  matchOver: boolean;
 };
 
 export type GameStateServer = LobbyState | TurnStateServer | HandEndState;
@@ -66,6 +71,7 @@ export type TurnStateClient = {
   players: LobbyPlayerPublic[];
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
+  takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
   dealerIndex: number;
 

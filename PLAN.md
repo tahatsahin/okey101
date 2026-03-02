@@ -39,6 +39,7 @@ Last updated: 2026-03-02
 - (x) Discard piles positioned between adjacent players (seat-relative layout).
 - (x) Drag-and-drop discard/draw using deck and correct discard pile targets.
 - (x) Free-form hand layout (no fixed grid slots; non-overlapping placement).
+- (x) Bots: host can add bots in lobby; bots draw from deck only and discard drawn tile (if okey, discard a random non-okey).
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.
@@ -54,3 +55,4 @@ Last updated: 2026-03-02
 - ( ) Game log/history and replay of last turn.
 - ( ) Auto-sort hand (by color/run) and smart grouping hints.
 - ( ) Basic anti-stall (soft timers) and reconnect indicators.
+- ( ) Allow removing/replacing bots when a human joins.

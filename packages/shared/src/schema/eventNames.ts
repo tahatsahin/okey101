@@ -1,9 +1,11 @@
 export const C2S_EVENT = {
   roomJoin: "room:join",
   roomReady: "room:ready",
+  roomAddBot: "room:addBot",
   gameStart: "game:start",
   moveDraw: "move:draw",
   moveDiscard: "move:discard",
+  moveReturnDiscard: "move:returnDiscard",
 } as const;
 
 export const S2C_EVENT = {

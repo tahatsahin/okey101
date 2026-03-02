@@ -30,6 +30,11 @@ function isOkeyTile(t: Tile, okey: { color: string; value: number }): boolean {
   return t.kind === "normal" && t.color === okey.color && t.value === okey.value;
 }
 
+function tileValueForSum(t: Tile, okey: { color: string; value: number }): number {
+  if (t.kind === "fakeJoker") return okey.value;
+  return t.value;
+}
+
 function topOfPile(pile: Tile[] | undefined): Tile | null {
   if (!pile || pile.length === 0) return null;
   return pile[pile.length - 1] ?? null;
@@ -166,6 +171,11 @@ export default function App() {
       if (!a.ok) alert(a.error);
     });
   }
+  function addBot() {
+    socket.emit("room:addBot", {}, (a: SimpleAck) => {
+      if (!a.ok) alert(a.error);
+    });
+  }
   function draw(source: "deck" | "prevDiscard") {
     socket.emit("move:draw", { source }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
@@ -173,6 +183,11 @@ export default function App() {
   }
   function discard(tileId: string) {
     socket.emit("move:discard", { tileId }, (a: SimpleAck) => {
+      if (!a.ok) alert(a.error);
+    });
+  }
+  function returnDiscard() {
+    socket.emit("move:returnDiscard", {}, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
@@ -237,7 +252,11 @@ export default function App() {
                 className={`lobby-player ${p.ready ? "ready" : ""} ${p.playerId === playerId ? "you" : ""}`}
               >
                 <div className="avatar-placeholder" />
-                <span>{p.name}{p.playerId === playerId ? " (you)" : ""}</span>
+                <span>
+                  {p.name}
+                  {p.isBot ? " (bot)" : ""}
+                  {p.playerId === playerId ? " (you)" : ""}
+                </span>
                 <span className={`ready-badge ${p.ready ? "on" : ""}`}>
                   {p.ready ? "✓" : "…"}
                 </span>
@@ -258,6 +277,11 @@ export default function App() {
             <button onClick={startGame} className="primary">
               Start Game
             </button>
+            {gs?.players?.[0]?.playerId === playerId && (gs?.players.length ?? 0) < 4 && (
+              <button onClick={addBot} className="secondary">
+                Add Bot
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -268,30 +292,90 @@ export default function App() {
     const winner = gs.result.winnerId
       ? gs.players.find((p) => p.playerId === gs.result.winnerId)?.name ?? gs.result.winnerId
       : null;
+    const roundNumber = gs.roundNumber ?? gs.handHistory.length;
+    const maxRounds = gs.maxRounds ?? 11;
+    const matchOver = gs.matchOver ?? roundNumber >= maxRounds;
+
+    const roundScores = gs.handHistory.map((res) => {
+      const totals = new Map<string, number>();
+      for (const p of gs.players) totals.set(p.playerId, 0);
+      for (const pen of res.penalties) {
+        totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+      }
+      return totals;
+    });
+    const totalsByPlayer = new Map<string, number>();
+    for (const p of gs.players) totalsByPlayer.set(p.playerId, 0);
+    for (const round of roundScores) {
+      for (const p of gs.players) {
+        totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
+      }
+    }
+    let winners: string[] = [];
+    if (matchOver) {
+      const min = Math.min(...gs.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0));
+      winners = gs.players.filter((p) => (totalsByPlayer.get(p.playerId) ?? 0) === min).map((p) => p.name);
+    }
     return (
       <div className="join-screen">
         <div className="lobby-card">
-          <h2>Hand Ended</h2>
-        <div className="hand-end-summary">
-          <div>Reason: {gs.result.reason}</div>
-          {winner && <div>Winner: {winner}</div>}
-          <div>Dealer: {gs.players[gs.dealerIndex]?.name ?? gs.dealerIndex}</div>
-          {(() => {
-            const totals = new Map<string, number>();
-            for (const p of gs.players) totals.set(p.playerId, 0);
-            for (const pen of gs.result.penalties) {
-              totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
-            }
-            return (
-              <div className="penalty-list">
+          <h2>{matchOver ? "Match Complete" : "Hand Ended"}</h2>
+          <div className="hand-end-summary">
+            <div>Round: {roundNumber} / {maxRounds}</div>
+            <div>Reason: {gs.result.reason}</div>
+            {winner && <div>Winner: {winner}</div>}
+            <div>Dealer: {gs.players[gs.dealerIndex]?.name ?? gs.dealerIndex}</div>
+            {matchOver && winners.length > 0 && (
+              <div>Overall Winner: {winners.join(", ")}</div>
+            )}
+          </div>
+
+          <div className="round-scores">
+            <div className="score-row score-header">
+              <div>Round</div>
+              {gs.players.map((p) => (
+                <div key={p.playerId}>{p.name}</div>
+              ))}
+            </div>
+            {roundScores.map((round, i) => (
+              <div key={`round-${i}`} className="score-row">
+                <div>#{i + 1}</div>
                 {gs.players.map((p) => (
-                  <div key={p.playerId} className="penalty-item">
-                    {p.name}: {totals.get(p.playerId) ?? 0} pts
-                  </div>
+                  <div key={p.playerId}>{round.get(p.playerId) ?? 0}</div>
                 ))}
               </div>
-            );
-          })()}
+            ))}
+            <div className="score-row score-total">
+              <div>Total</div>
+              {gs.players.map((p) => (
+                <div key={p.playerId}>{totalsByPlayer.get(p.playerId) ?? 0}</div>
+              ))}
+            </div>
+          </div>
+
+          <div className="lobby-players">
+            {gs.players.map((p) => (
+              <div
+                key={p.playerId}
+                className={`lobby-player ${p.ready ? "ready" : ""} ${p.playerId === playerId ? "you" : ""}`}
+              >
+                <div className="avatar-placeholder" />
+                <span>
+                  {p.name}
+                  {p.isBot ? " (bot)" : ""}
+                  {p.playerId === playerId ? " (you)" : ""}
+                </span>
+                <span className={`ready-badge ${p.ready ? "on" : ""}`}>
+                  {p.ready ? "✓" : "…"}
+                </span>
+              </div>
+            ))}
+          </div>
+          <div className="lobby-actions">
+            <button onClick={() => setReady(true)}>Ready</button>
+            <button onClick={() => setReady(false)} className="secondary">
+              Not Ready
+            </button>
           </div>
         </div>
       </div>
@@ -306,6 +390,7 @@ export default function App() {
       isMyTurn={isMyTurn}
       onDraw={draw}
       onDiscard={discard}
+      onReturnDiscard={returnDiscard}
       onOpenMeld={openMeld}
       onLayoff={layoff}
       onTakeAndMeld={takeAndMeld}
@@ -324,6 +409,7 @@ function GameBoard({
   isMyTurn,
   onDraw,
   onDiscard,
+  onReturnDiscard,
   onOpenMeld,
   onLayoff,
   onTakeAndMeld,
@@ -334,6 +420,7 @@ function GameBoard({
   isMyTurn: boolean;
   onDraw: (source: "deck" | "prevDiscard") => void;
   onDiscard: (tileId: string) => void;
+  onReturnDiscard: () => void;
   onOpenMeld: (melds: string[][]) => void;
   onLayoff: (tableMeldId: string, tileIds: string[]) => void;
   onTakeAndMeld: (fromPlayerId: string, melds: string[][]) => void;
@@ -356,6 +443,8 @@ function GameBoard({
   const handRef = useRef<HTMLDivElement | null>(null);
   const [handSize, setHandSize] = useState({ w: 900, h: 200 });
   const [tilePositions, setTilePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const pendingDropPos = useRef<{ x: number; y: number } | null>(null);
+  const prevHandIdsRef = useRef<Set<string>>(new Set());
 
   const seats = seatOrder(state.players, playerId);
   const [bottomId, rightId, topId, leftId] = seats;
@@ -364,11 +453,21 @@ function GameBoard({
   const order = state.players.map((p) => p.playerId);
   const curIdx = order.indexOf(state.currentPlayerId);
   const prevPlayerId = order[(curIdx - 1 + order.length) % order.length]!;
-  const prevTop = topOfPile(state.discardPiles?.[prevPlayerId]);
 
   const tableMelds = state.tableMelds ?? [];
   const penalties = state.penalties ?? [];
   const openedMode = playerId ? (state.openedBy[playerId] ?? "none") : "none";
+  const takenDiscard = state.takenDiscard;
+  const takenTile = takenDiscard?.tile;
+  const mustMeldDiscard = state.turnStep === "mustMeldDiscard";
+  const groupedIds = useMemo(() => new Set(meldGroups.flat()), [meldGroups]);
+  const visibleHand = state.yourHand.filter((t) => !groupedIds.has(t.id));
+  const isPairsGrouping = meldGroups.length > 0 && meldGroups.every((g) => g.length === 2);
+  const pairsCount = meldGroups.length;
+  const remainingSum =
+    openedMode === "pairs"
+      ? state.yourHand.reduce((sum, t) => sum + tileValueForSum(t, state.okey), 0)
+      : 0;
 
   useEffect(() => {
     if (!handRef.current) return;
@@ -389,13 +488,16 @@ function GameBoard({
     );
   }
 
-  function findFreeSpot(existing: Record<string, { x: number; y: number }>) {
+  function findFreeSpot(existing: Record<string, { x: number; y: number }>, excludeIds?: Set<string>) {
     const maxX = Math.max(0, handSize.w - TILE_W);
     const rows = [0, TILE_H + ROW_GAP];
     for (const y of rows) {
       for (let x = 0; x <= maxX; x += TILE_W + TILE_GAP) {
         const pos = { x, y };
-        const overlap = Object.values(existing).some((p) => rectsOverlap(pos, p));
+        const overlap = Object.entries(existing).some(([id, p]) => {
+          if (excludeIds?.has(id)) return false;
+          return rectsOverlap(pos, p);
+        });
         if (!overlap) return pos;
       }
     }
@@ -410,28 +512,82 @@ function GameBoard({
       for (const id of Object.keys(prev)) {
         if (handIds.has(id)) next[id] = prev[id]!;
       }
+      const prevIds = prevHandIdsRef.current;
+      const newIds = state.yourHand.filter((t) => !prevIds.has(t.id)).map((t) => t.id);
       for (const t of state.yourHand) {
-        if (!next[t.id]) {
-          next[t.id] = findFreeSpot(next);
+        if (next[t.id]) continue;
+        if (newIds.length === 1 && pendingDropPos.current && t.id === newIds[0]) {
+          const pos = pendingDropPos.current;
+          pendingDropPos.current = null;
+          const overlap = Object.entries(next).some(([id, p]) => {
+            if (groupedIds.has(id)) return false;
+            return rectsOverlap(pos, p);
+          });
+          next[t.id] = overlap ? findFreeSpot(next, groupedIds) : pos;
+        } else {
+          next[t.id] = findFreeSpot(next, groupedIds);
         }
       }
+      prevHandIdsRef.current = new Set(state.yourHand.map((t) => t.id));
       return next;
     });
-  }, [state.yourHand, handSize.w, handSize.h]);
+  }, [state.yourHand, handSize.w, handSize.h, groupedIds]);
+
+  useEffect(() => {
+    setSelectedIds((prev) =>
+      prev.filter(
+        (id) =>
+          state.yourHand.some((t) => t.id === id) || (takenTile && takenTile.id === id)
+      )
+    );
+  }, [state.yourHand, takenTile]);
 
   function toggle(id: string) {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
     );
   }
+  function tileById(id: string): Tile | undefined {
+    if (takenTile?.id === id) return takenTile;
+    return state.yourHand.find((h) => h.id === id);
+  }
+  function groupTotal(ids: string[]): number {
+    return ids.reduce((sum, id) => {
+      const t = tileById(id);
+      return t ? sum + tileValueForSum(t, state.okey) : sum;
+    }, 0);
+  }
+  const groupsTotal = meldGroups.reduce((sum, group) => sum + groupTotal(group), 0);
   function addCurrentAsMeld() {
     if (selectedIds.length < 2) return;
     setMeldGroups((prev) => [...prev, selectedIds]);
     setSelectedIds([]);
   }
   function clearBuilder() {
+    const returningIds = meldGroups.flat();
     setMeldGroups([]);
     setSelectedIds([]);
+    if (returningIds.length > 0) {
+      setTilePositions((prev) => {
+        const next = { ...prev };
+        for (const id of returningIds) {
+          const pos = next[id];
+          if (!pos) continue;
+          const overlap = Object.entries(next).some(([otherId, p]) => {
+            if (otherId === id) return false;
+            return rectsOverlap(pos, p);
+          });
+          if (overlap) {
+            next[id] = findFreeSpot(next);
+          }
+        }
+        return next;
+      });
+    }
+  }
+  function handleReturnDiscard() {
+    onReturnDiscard();
+    clearBuilder();
   }
   function submitOpenMeld() {
     const allMelds =
@@ -448,6 +604,7 @@ function GameBoard({
     if (selectedIds.length !== 1) return;
     onDiscard(selectedIds[0]!);
     setSelectedIds([]);
+    clearBuilder();
   }
 
   /* ── Drag & Drop ── */
@@ -494,25 +651,26 @@ function GameBoard({
       if (!ds) return;
 
       if (ds.type === "deck") {
-        if (isMyTurn && state.turnStep === "mustDraw") onDraw("deck");
+        if (isMyTurn && state.turnStep === "mustDraw" && handRef.current) {
+          const rect = handRef.current.getBoundingClientRect();
+          const rawX = e.clientX - rect.left - TILE_W / 2;
+          const rawY = e.clientY - rect.top - TILE_H / 2;
+          const x = Math.min(Math.max(0, rawX), Math.max(0, handSize.w - TILE_W));
+          const rowTop = 0;
+          const rowBottom = TILE_H + ROW_GAP;
+          const distTop = Math.abs(rawY - rowTop);
+          const distBottom = Math.abs(rawY - rowBottom);
+          const y = distTop <= distBottom ? rowTop : rowBottom;
+          pendingDropPos.current = { x, y };
+          onDraw("deck");
+        }
         dragState.current = null;
         return;
       }
 
       if (ds.type === "discard") {
         if (!isMyTurn || state.turnStep !== "mustDraw" || !ds.tileId || !ds.fromPlayerId) return;
-        if (selectedIds.length >= 2) {
-          onTakeAndMeld(ds.fromPlayerId, [[ds.tileId, ...selectedIds]]);
-          clearBuilder();
-        } else if (meldGroups.length > 0) {
-          const [first, ...rest] = meldGroups;
-          const melds = first ? [[ds.tileId, ...first], ...rest] : [];
-          if (melds.length === 0) return alert("Build a meld first");
-          onTakeAndMeld(ds.fromPlayerId, melds);
-          clearBuilder();
-        } else {
-          alert("Select tiles to meld with the taken discard.");
-        }
+        onDraw("prevDiscard");
         dragState.current = null;
         return;
       }
@@ -531,6 +689,7 @@ function GameBoard({
           const next = { ...prev, [ds.tileId!]: { x, y } };
           const overlap = Object.entries(next).some(([id, pos]) => {
             if (id === ds.tileId) return false;
+            if (groupedIds.has(id)) return false;
             return rectsOverlap(next[ds.tileId!], pos);
           });
           if (overlap) return prev;
@@ -548,7 +707,7 @@ function GameBoard({
       }
       dragState.current = null;
     },
-    [clearBuilder, handSize.h, handSize.w, isMyTurn, meldGroups, onDraw, onReorder, onTakeAndMeld, rectsOverlap, selectedIds, state.turnStep, state.yourHand, tilePositions]
+    [groupedIds, handSize.h, handSize.w, isMyTurn, onDraw, onReorder, rectsOverlap, state.turnStep, state.yourHand, tilePositions]
   );
 
   const handleDiscardDrop = useCallback(
@@ -686,7 +845,12 @@ function GameBoard({
         {discardZones.map((z) => {
           const top = topOfPile(state.discardPiles?.[z.ownerId ?? ""]);
           const isPrev = z.ownerId === prevPlayerId;
-          const canTake = !!top && isMyTurn && state.turnStep === "mustDraw" && isPrev;
+          const showReturn =
+            isMyTurn &&
+            mustMeldDiscard &&
+            takenDiscard?.fromPlayerId === z.ownerId;
+          const canTake =
+            !!top && isMyTurn && state.turnStep === "mustDraw" && isPrev;
           const canDiscardHere = isMyTurn && state.turnStep === "mustDiscard" && z.ownerId === playerId;
           return (
             <div
@@ -695,7 +859,11 @@ function GameBoard({
               onDragOver={handleDiscardDragOver(canDiscardHere)}
               onDrop={handleDiscardDrop(z.ownerId ?? "")}
             >
-              {top ? (
+              {showReturn ? (
+                <button className="return-tile-btn" onClick={handleReturnDiscard}>
+                  Return tile
+                </button>
+              ) : top ? (
                 <TileChip
                   tile={top}
                   disabled={!canTake}
@@ -719,12 +887,17 @@ function GameBoard({
             {isMyTurn
               ? state.turnStep === "mustDraw"
                 ? "Draw a tile"
+                : state.turnStep === "mustMeldDiscard"
+                ? "Meld with taken discard or return it"
                 : "Discard a tile"
               : `${playerMap[state.currentPlayerId]?.name ?? "?"}'s turn`}
           </span>
           <span className="open-status">
             Open: {openedMode === "none" ? "Not opened" : openedMode === "pairs" ? "Pairs" : "Runs/Sets"}
           </span>
+          {openedMode === "pairs" && (
+            <span className="open-status">Remaining: {remainingSum}</span>
+          )}
           <span className="open-status">
             Dealer: {state.players[state.dealerIndex]?.name ?? state.dealerIndex}
           </span>
@@ -744,28 +917,38 @@ function GameBoard({
                 </button>
               )}
             {isMyTurn &&
-              state.turnStep === "mustDraw" &&
-              prevTop &&
+              state.turnStep === "mustMeldDiscard" &&
+              takenDiscard &&
               (selectedIds.length >= 3 || meldGroups.length > 0) && (
                 <button
                   onClick={() => {
                     const ids =
-                      selectedIds.length >= 3 ? [selectedIds] : meldGroups;
+                      meldGroups.length > 0
+                        ? meldGroups
+                        : selectedIds.length >= 3
+                        ? [selectedIds]
+                        : [];
                     if (ids.length === 0) return;
-                    onTakeAndMeld(prevPlayerId, ids);
+                    const includesTaken = ids.some((m) => m.includes(takenDiscard.tile.id));
+                    if (!includesTaken) return alert("Include the taken tile in your meld.");
+                    onTakeAndMeld(takenDiscard.fromPlayerId, ids);
                     clearBuilder();
                   }}
                 >
-                  Take &amp; Meld
+                  Meld Taken
                 </button>
               )}
             {isMyTurn &&
+              state.turnStep === "mustDiscard" &&
               (selectedIds.length >= 3 || meldGroups.length > 0) && (
                 <button onClick={submitOpenMeld} className="primary">
                   Open Meld
                 </button>
               )}
-            {isMyTurn && layoffTargetId && selectedIds.length > 0 && (
+            {isMyTurn &&
+              state.turnStep === "mustDiscard" &&
+              layoffTargetId &&
+              selectedIds.length > 0 && (
               <button
                 onClick={() => {
                   onLayoff(layoffTargetId, selectedIds);
@@ -776,11 +959,11 @@ function GameBoard({
                 Layoff
               </button>
             )}
-            {selectedIds.length > 0 && (
-              <button onClick={addCurrentAsMeld} className="secondary">
-                Group ({selectedIds.length})
-              </button>
-            )}
+          {selectedIds.length > 0 && (
+            <button onClick={addCurrentAsMeld} className="secondary">
+              Group ({selectedIds.length})
+            </button>
+          )}
             {(selectedIds.length > 0 || meldGroups.length > 0) && (
               <button onClick={clearBuilder} className="danger">
                 Clear
@@ -789,14 +972,32 @@ function GameBoard({
           </div>
         </div>
 
+        {takenTile && isMyTurn && state.turnStep === "mustMeldDiscard" && (
+          <div className="taken-tile-panel">
+            <span className="taken-label">Taken tile</span>
+            <TileChip
+              tile={takenTile}
+              selected={selectedIds.includes(takenTile.id)}
+              disabled={false}
+              onClick={() => toggle(takenTile.id)}
+              okey={state.okey}
+            />
+          </div>
+        )}
+
         {/* Meld builder preview */}
         {meldGroups.length > 0 && (
           <div className="meld-preview">
+            <div className="meld-total">
+              {isPairsGrouping ? `${pairsCount} Pairs, 5 needed` : `Total: ${groupsTotal}`}
+            </div>
             {meldGroups.map((group, i) => (
               <div key={i} className="meld-preview-group">
-                <span className="meld-label">Meld {i + 1}</span>
+                <span className="meld-label">
+                  {isPairsGrouping ? `Pair ${i + 1}` : `Meld ${i + 1} · ${groupTotal(group)}`}
+                </span>
                 {group.map((id) => {
-                  const t = state.yourHand.find((h) => h.id === id);
+                  const t = tileById(id);
                   return t ? (
                     <TileChip key={id} tile={t} disabled okey={state.okey} />
                   ) : null;
@@ -813,7 +1014,7 @@ function GameBoard({
           onDragOver={handleHandDragOver}
           onDrop={handleHandDrop}
         >
-          {state.yourHand.map((tile) => {
+          {visibleHand.map((tile) => {
             const pos = tilePositions[tile.id] ?? { x: 0, y: 0 };
             return (
               <div
@@ -827,7 +1028,10 @@ function GameBoard({
                   disabled={false}
                   onClick={() => toggle(tile.id)}
                   onDoubleClick={() => {
-                    if (isMyTurn && state.turnStep === "mustDiscard") onDiscard(tile.id);
+                    if (isMyTurn && state.turnStep === "mustDiscard") {
+                      onDiscard(tile.id);
+                      clearBuilder();
+                    }
                   }}
                   okey={state.okey}
                   draggable

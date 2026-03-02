@@ -117,6 +117,7 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     currentPlayerId,
     // First player has 22 tiles — they skip drawing and go straight to discard
     turnStep: "mustDiscard",
+    takenDiscard: undefined,
     openedBy: Object.fromEntries(playerIds.map((id) => [id, "none"])),
     handHistory: prev.phase === "handEnd" ? prev.handHistory : [],
     dealerIndex,
@@ -151,6 +152,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
 
     currentPlayerId: s.currentPlayerId,
     turnStep: s.turnStep,
+    takenDiscard: s.takenDiscard,
     openedBy: s.openedBy,
     dealerIndex: s.dealerIndex,
 

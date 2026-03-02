@@ -94,6 +94,10 @@ const handEndState = reduce(endReady, {
   tileId: endReady.hands[endPlayer][0]!.id,
 }) as any;
 simpleAssert(handEndState.phase === 'handEnd', 'handEnd reached after finishing discard');
-const newStart = reduce(handEndState, { type: 'START_GAME', playerId: 'p1' }) as TurnStateServer;
-simpleAssert(newStart.phase === 'turn', 'new hand started from handEnd');
+let readyState: any = handEndState;
+for (const p of players) {
+  readyState = reduce(readyState, { type: 'SET_READY', playerId: p.playerId, ready: true });
+}
+const newStart = readyState as TurnStateServer;
+simpleAssert(newStart.phase === 'turn', 'new hand started from handEnd on all-ready');
 simpleAssert(newStart.dealerIndex === (ts.dealerIndex + 1) % 4, 'dealerIndex rotated');

@@ -8,9 +8,11 @@ export const C2S = {
     token: z.string().min(10).optional(),
   }),
   roomReady: z.object({ ready: z.boolean() }),
+  roomAddBot: z.object({}),
   gameStart: z.object({}),
   moveDraw: z.object({ source: z.enum(["deck", "prevDiscard"]) }),
   moveDiscard: z.object({ tileId: z.string().min(1) }),
+  moveReturnDiscard: z.object({}),
 } as const;
 
 // additional intents for melds / layoff

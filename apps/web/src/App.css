@@ -88,6 +88,38 @@ body {
   margin-top: 4px;
 }
 .join-card button:hover { background: #00acc1; }
+
+.hand-end-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+  font-size: 0.9rem;
+}
+
+.round-scores {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0 18px;
+  text-align: left;
+}
+.score-row {
+  display: grid;
+  grid-template-columns: 70px repeat(4, minmax(60px, 1fr));
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+}
+.score-row.score-header {
+  font-weight: 700;
+  background: rgba(0,0,0,0.35);
+}
+.score-row.score-total {
+  font-weight: 700;
+  background: rgba(0,0,0,0.45);
+}
 .join-card button:disabled { opacity: 0.4; cursor: default; }
 
 /* Lobby */
@@ -335,6 +367,23 @@ body {
   letter-spacing: 0.5px;
 }
 
+.return-tile-btn {
+  width: 48px;
+  height: 66px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.3);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-size: 0.55rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+}
+
+.return-tile-btn:hover {
+  background: rgba(255,255,255,0.14);
+}
+
 /* ── Table Melds ──────────────────────────────────────── */
 
 .table-melds {
@@ -504,12 +553,35 @@ body {
 .action-buttons button.danger { background: rgba(244,67,54,0.3); color: #ef9a9a; }
 .action-buttons button.danger:hover { background: rgba(244,67,54,0.5); }
 
+.taken-tile-panel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.35);
+  border-radius: 6px;
+}
+.taken-label {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.8;
+}
+
 /* Meld preview  */
 .meld-preview {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+}
+.meld-total {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  background: rgba(0,0,0,0.4);
+  border-radius: 6px;
+  align-self: center;
 }
 .meld-preview-group {
   display: flex;

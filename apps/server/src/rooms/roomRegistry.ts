@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { PlayerId, RoomId, GameStateServer, TileId } from "@okey/shared";
+import type { PlayerId, RoomId, GameStateServer, TileId, TurnStateServer } from "@okey/shared";
 import type { LobbyPlayer } from "./roomTypes.js";
 import { reduce } from "../game/reducer.js";
 
@@ -25,6 +25,76 @@ type SimpleResult = { ok: true } | { ok: false; error: string };
 export class RoomRegistry {
   private rooms = new Map<RoomId, RoomRuntime>();
   private socketToMeta = new Map<string, { roomId: RoomId; playerId: PlayerId }>();
+  private notify: ((roomId: RoomId) => void) | null = null;
+
+  setNotifier(fn: (roomId: RoomId) => void) {
+    this.notify = fn;
+  }
+
+  private syncLobbyState(room: RoomRuntime) {
+    room.state = {
+      phase: "lobby",
+      roomId: room.roomId,
+      players: room.players.map((p) => ({
+        playerId: p.playerId,
+        name: p.name,
+        ready: p.ready,
+        isBot: p.isBot
+      }))
+    };
+    room.version++;
+  }
+
+  private scheduleBotTurn(roomId: RoomId) {
+    setTimeout(() => this.runBotTurn(roomId), 200);
+  }
+
+  private runBotTurn(roomId: RoomId) {
+    const room = this.rooms.get(roomId);
+    if (!room) return;
+    if (room.state.phase !== "turn") return;
+    const state = room.state as TurnStateServer;
+    const currentId = state.currentPlayerId;
+    const current = room.players.find((p) => p.playerId === currentId);
+    if (!current?.isBot) return;
+
+    if (state.turnStep === "mustDraw") {
+      if (state.deck.length === 0) return;
+      try {
+        room.state = reduce(room.state, { type: "DRAW", playerId: currentId, source: "deck" });
+        room.version++;
+        this.notify?.(roomId);
+      } catch {
+        return;
+      }
+      this.scheduleBotTurn(roomId);
+      return;
+    }
+
+    if (state.turnStep === "mustDiscard") {
+      const hand = state.hands[currentId] ?? [];
+      if (hand.length === 0) return;
+      const last = hand[hand.length - 1]!;
+      const isOkey = last.kind === "normal" && last.color === state.okey.color && last.value === state.okey.value;
+      let discard = last;
+      if (isOkey) {
+        const nonOkey = hand.filter(
+          (t) => !(t.kind === "normal" && t.color === state.okey.color && t.value === state.okey.value)
+        );
+        if (nonOkey.length > 0) {
+          discard = nonOkey[Math.floor(Math.random() * nonOkey.length)]!;
+        }
+      }
+      try {
+        room.state = reduce(room.state, { type: "DISCARD", playerId: currentId, tileId: discard.id });
+        room.version++;
+        this.notify?.(roomId);
+      } catch {
+        return;
+      }
+      this.scheduleBotTurn(roomId);
+    }
+  }
 
   private getOrCreate(roomId: RoomId): RoomRuntime {
     let room = this.rooms.get(roomId);
@@ -69,7 +139,8 @@ export class RoomRegistry {
       playerId,
       name: args.name,
       socketId: args.socketId,
-      ready: false
+      ready: false,
+      isBot: false
     });
 
     room.tokenToPlayerId.set(token, playerId);
@@ -77,12 +148,7 @@ export class RoomRegistry {
     this.socketToMeta.set(args.socketId, { roomId: room.roomId, playerId });
 
     // sync lobby state from players list
-    room.state = {
-      phase: "lobby",
-      roomId: room.roomId,
-      players: room.players.map((p) => ({ playerId: p.playerId, name: p.name, ready: p.ready }))
-    };
-    room.version++;
+    this.syncLobbyState(room);
 
     return { ok: true, playerId, roomId: room.roomId, token };
   }
@@ -101,6 +167,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "SET_READY", playerId: meta.playerId, ready });
       room.version++;
+      if (room.state.phase === "turn") this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -116,6 +183,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "START_GAME", playerId: meta.playerId });
       room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -129,7 +197,9 @@ export class RoomRegistry {
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
 
     try {
-      room.state = reduce(room.state, { type: "DRAW", playerId: meta.playerId, source });      room.version++;
+      room.state = reduce(room.state, { type: "DRAW", playerId: meta.playerId, source });
+      room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -145,6 +215,23 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "DISCARD", playerId: meta.playerId, tileId });
       room.version++;
+      this.scheduleBotTurn(room.roomId);
+      return { ok: true };
+    } catch (e: any) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
+
+  returnTakenDiscard(socketId: string): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+
+    try {
+      room.state = reduce(room.state, { type: "RETURN_TAKEN_DISCARD", playerId: meta.playerId });
+      room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -160,6 +247,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "OPEN_MELD", playerId: meta.playerId, melds });
       room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -175,6 +263,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "LAYOFF", playerId: meta.playerId, tableMeldId, tileIds });
       room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -190,6 +279,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "TAKE_AND_MELD", playerId: meta.playerId, fromPlayerId, melds });
       room.version++;
+      this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -209,6 +299,32 @@ export class RoomRegistry {
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
     }
+  }
+
+  addBot(socketId: string): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+    if (room.state.phase !== "lobby") return { ok: false, error: "BAD_PHASE" };
+
+    const hostId = room.players[0]?.playerId;
+    if (!hostId) return { ok: false, error: "NO_HOST" };
+    if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
+    if (room.players.length >= 4) return { ok: false, error: "ROOM_FULL" };
+
+    const botId = randomUUID();
+    const botCount = room.players.filter((p) => p.isBot).length + 1;
+    room.players.push({
+      playerId: botId,
+      name: `Bot ${botCount}`,
+      socketId: "",
+      ready: true,
+      isBot: true
+    });
+
+    this.syncLobbyState(room);
+    return { ok: true };
   }
 
   onDisconnect(socketId: string): Array<{ roomId: RoomId }> {

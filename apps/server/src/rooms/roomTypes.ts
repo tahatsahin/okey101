@@ -6,6 +6,7 @@ export type LobbyPlayer = {
     name: string;
     socketId: string;
     ready: boolean;
+    isBot?: boolean;
 };
 
 export type RoomState = {

@@ -176,7 +176,22 @@ export function assignMeldTiles(tiles: Tile[], okey: OkeyInfo): TableMeldTile[] 
   const vr = validateMeldFromHand(tiles, okey);
   if (!vr.valid) return tiles as TableMeldTile[];
   const jokerTiles = tiles.filter((t) => isJoker(t, okey));
-  if (jokerTiles.length === 0) return tiles as TableMeldTile[];
+  const base: TableMeldTile[] = tiles.map((t) => t as TableMeldTile);
+  if (jokerTiles.length === 0) {
+    if (vr.type === "run") {
+      return base.slice().sort((a, b) => resolveTile(a as any, okey).value - resolveTile(b as any, okey).value);
+    }
+    if (vr.type === "set" || vr.type === "pair") {
+      return base
+        .slice()
+        .sort(
+          (a, b) =>
+            COLOR_ORDER.indexOf(resolveTile(a as any, okey).color as TileColor) -
+            COLOR_ORDER.indexOf(resolveTile(b as any, okey).color as TileColor)
+        );
+    }
+    return base;
+  }
 
   const assignments = new Map<string, { color: TileColor; value: TileValue }>();
   if (vr.type === "pair") {
@@ -214,10 +229,25 @@ export function assignMeldTiles(tiles: Tile[], okey: OkeyInfo): TableMeldTile[] 
     }
   }
 
-  return tiles.map((t) => {
+  const assignedTiles = tiles.map((t) => {
     const assigned = assignments.get(t.id);
     return assigned ? ({ ...t, assigned } as TableMeldTile) : (t as TableMeldTile);
   });
+  if (vr.type === "run") {
+    return assignedTiles.slice().sort((a, b) => {
+      const av = a.assigned?.value ?? resolveTile(a as any, okey).value;
+      const bv = b.assigned?.value ?? resolveTile(b as any, okey).value;
+      return av - bv;
+    });
+  }
+  if (vr.type === "set" || vr.type === "pair") {
+    return assignedTiles.slice().sort((a, b) => {
+      const ac = a.assigned?.color ?? resolveTile(a as any, okey).color;
+      const bc = b.assigned?.color ?? resolveTile(b as any, okey).color;
+      return COLOR_ORDER.indexOf(ac as TileColor) - COLOR_ORDER.indexOf(bc as TileColor);
+    });
+  }
+  return assignedTiles;
 }
 
 function meldMaxSum(tiles: Tile[], okey: OkeyInfo, type: "run" | "set" | "pair"): number {

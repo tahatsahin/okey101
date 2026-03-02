@@ -3,6 +3,8 @@ import { startTurnGame } from "./gameLogic.js";
 import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld, validateMeldSet, assignMeldTiles } from "./validate.js";
 import { randomUUID } from "crypto";
 
+const MAX_ROUNDS = 11;
+
 function isOkeyTile(tile: Tile, okey: { color: string; value: number }): boolean {
   return tile.kind === "normal" && tile.color === okey.color && tile.value === okey.value;
 }
@@ -12,27 +14,51 @@ function isFinishingDiscard(hand: Tile[]): boolean {
   return hand.length === 0;
 }
 
-function jokerInHandPenalties(state: TurnStateServer): Penalty[] {
+function tilePenaltyValue(tile: Tile, okey: { color: string; value: number }): number {
+  if (tile.kind === "fakeJoker") return okey.value;
+  if (isOkeyTile(tile, okey)) return okey.value;
+  return (tile as any).value ?? 0;
+}
+
+function endRoundPenalties(state: TurnStateServer): Penalty[] {
   const penalties: Penalty[] = [];
   for (const p of state.players) {
+    const mode = state.openedBy?.[p.playerId] ?? "none";
     const hand = state.hands[p.playerId] ?? [];
-    const count = hand.filter((t) => isOkeyTile(t, state.okey)).length;
-    if (count > 0) {
-      penalties.push({ playerId: p.playerId, points: 101 * count, reason: "JOKER_IN_HAND" });
+    if (mode === "none") {
+      penalties.push({ playerId: p.playerId, points: 202, reason: "NO_OPEN" });
+      continue;
     }
+    const sum = hand.reduce((acc, t) => acc + tilePenaltyValue(t, state.okey), 0);
+    if (sum <= 0) continue;
+    const mult = mode === "pairs" ? 2 : 1;
+    penalties.push({
+      playerId: p.playerId,
+      points: sum * mult,
+      reason: mode === "pairs" ? "HAND_SUM_PAIRS" : "HAND_SUM"
+    });
   }
   return penalties;
 }
 
 function endHand(state: TurnStateServer, result: HandResult): HandEndState {
-  const handHistory = [...(state.handHistory ?? []), result];
+  const finalResult: HandResult = {
+    ...result,
+    penalties: [...(result.penalties ?? []), ...endRoundPenalties(state)]
+  };
+  const handHistory = [...(state.handHistory ?? []), finalResult];
+  const roundNumber = handHistory.length;
+  const matchOver = roundNumber >= MAX_ROUNDS;
   return {
     phase: "handEnd",
     roomId: state.roomId,
-    players: state.players,
-    result,
+    players: state.players.map((p) => ({ ...p, ready: p.isBot ? true : false })),
+    result: finalResult,
     handHistory,
-    dealerIndex: state.dealerIndex
+    dealerIndex: state.dealerIndex,
+    roundNumber,
+    maxRounds: MAX_ROUNDS,
+    matchOver
   };
 }
 
@@ -46,6 +72,7 @@ export type GameAction =
   | { type: "START_GAME"; playerId: PlayerId }
   | { type: "DRAW"; playerId: PlayerId; source: "deck" | "prevDiscard" }
   | { type: "DISCARD"; playerId: PlayerId; tileId: TileId }
+  | { type: "RETURN_TAKEN_DISCARD"; playerId: PlayerId }
   | { type: "OPEN_MELD"; playerId: PlayerId; melds: TileId[][]; fromDiscard?: boolean }
   | { type: "LAYOFF"; playerId: PlayerId; tableMeldId: string; tileIds: TileId[] }
   | { type: "TAKE_AND_MELD"; playerId: PlayerId; fromPlayerId: PlayerId; melds: TileId[][] }
@@ -70,6 +97,24 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
             p.playerId === action.playerId ? { ...p, ready: action.ready } : p
           )
         };
+      }
+      if (state.phase === "handEnd") {
+        const players = state.players.map((p) =>
+          p.playerId === action.playerId ? { ...p, ready: action.ready } : p
+        );
+        const next = { ...state, players };
+        const allReady = players.every((p) => p.ready);
+        if (!allReady) return next;
+
+        if (state.matchOver) {
+          return {
+            phase: "lobby",
+            roomId: state.roomId,
+            players: players.map((p) => ({ ...p, ready: false }))
+          };
+        }
+
+        return startTurnGame(next);
       }
       return state;
     }
@@ -107,8 +152,19 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         drawnTile = tile;
         nextDeck = state.deck.slice(0, -1);
       } else {
-        // Taking previous discard into hand is not allowed; must use TAKE_AND_MELD.
-        throw new Error("TAKE_DISCARD_MUST_MELD");
+        const prevPile = state.discardPiles[prevPlayerId] ?? [];
+        const top = prevPile[prevPile.length - 1];
+        if (!top) throw new Error("NO_DISCARD");
+        nextDiscardPiles = {
+          ...state.discardPiles,
+          [prevPlayerId]: prevPile.slice(0, -1)
+        };
+        return {
+          ...state,
+          discardPiles: nextDiscardPiles,
+          takenDiscard: { fromPlayerId: prevPlayerId, tile: top },
+          turnStep: "mustMeldDiscard"
+        };
       }
 
       return {
@@ -120,6 +176,24 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
           [action.playerId]: [...(state.hands[action.playerId] ?? []), drawnTile]
         },
         turnStep: "mustDiscard"
+      };
+    }
+
+    case "RETURN_TAKEN_DISCARD": {
+      if (state.phase !== "turn") throw new Error("BAD_PHASE");
+      if (state.currentPlayerId !== action.playerId) throw new Error("NOT_YOUR_TURN");
+      if (state.turnStep !== "mustMeldDiscard") throw new Error("INVALID_STEP");
+      const taken = state.takenDiscard;
+      if (!taken) throw new Error("NO_TAKEN_DISCARD");
+      const pile = state.discardPiles[taken.fromPlayerId] ?? [];
+      return {
+        ...state,
+        takenDiscard: undefined,
+        discardPiles: {
+          ...state.discardPiles,
+          [taken.fromPlayerId]: [...pile, taken.tile]
+        },
+        turnStep: "mustDraw"
       };
     }
 
@@ -184,7 +258,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       // after opening, player must discard
       const nextState: TurnStateServer = { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
       if (allPairsOpened(openedBy)) {
-        const penalties = (nextState.penalties ?? []).concat(jokerInHandPenalties(nextState));
+        const penalties = nextState.penalties ?? [];
         return endHand(nextState, { reason: "ALL_PAIRS", penalties });
       }
       return nextState;
@@ -226,7 +300,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
     case "TAKE_AND_MELD": {
       if (state.phase !== "turn") throw new Error("BAD_PHASE");
       if (state.currentPlayerId !== action.playerId) throw new Error("NOT_YOUR_TURN");
-      if (state.turnStep !== "mustDraw") throw new Error("INVALID_STEP");
+      if (state.turnStep !== "mustDraw" && state.turnStep !== "mustMeldDiscard") throw new Error("INVALID_STEP");
 
       const order = state.players.map((p) => p.playerId);
       const curIdx = order.indexOf(state.currentPlayerId);
@@ -235,7 +309,10 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (prevPlayerId !== action.fromPlayerId) throw new Error("INVALID_FROM_PLAYER");
 
       const prevPile = state.discardPiles[prevPlayerId] ?? [];
-      const top = prevPile[prevPile.length - 1];
+      const prevTop = prevPile[prevPile.length - 1];
+      const taken = state.takenDiscard;
+      if (state.turnStep === "mustMeldDiscard" && !taken) throw new Error("NO_TAKEN_DISCARD");
+      const top = taken?.tile ?? prevTop;
       if (!top) throw new Error("PREV_DISCARD_EMPTY");
 
       // ensure melds include the taken tile id
@@ -280,7 +357,10 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       }
 
       // remove taken tile from prev pile and remove other tiles from hand
-      const newDiscardPiles = { ...state.discardPiles, [prevPlayerId]: prevPile.slice(0, -1) };
+      const newDiscardPiles =
+        taken?.tile
+          ? state.discardPiles
+          : { ...state.discardPiles, [prevPlayerId]: prevPile.slice(0, -1) };
       const newHands = { ...state.hands };
       for (const tiles of meldObjs) {
         for (const t of tiles) {
@@ -303,8 +383,9 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         turnStep: "mustDiscard",
         openedBy
       };
+      if (taken?.tile) nextState.takenDiscard = undefined;
       if (allPairsOpened(openedBy)) {
-        const penalties = (nextState.penalties ?? []).concat(jokerInHandPenalties(nextState));
+        const penalties = nextState.penalties ?? [];
         return endHand(nextState, { reason: "ALL_PAIRS", penalties });
       }
       return nextState;
@@ -357,8 +438,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         return endHand(nextState, { reason: "WIN", winnerId: action.playerId, penalties });
       }
       if (nextState.deck.length === 0) {
-        const endPenalties = penalties.concat(jokerInHandPenalties(nextState));
-        return endHand(nextState, { reason: "DECK_EMPTY", penalties: endPenalties });
+        return endHand(nextState, { reason: "DECK_EMPTY", penalties });
       }
       return nextState;
     }

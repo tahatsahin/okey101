@@ -62,14 +62,19 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
 (function testDrawFromPrevDiscard() {
   // p1 is current; p4 is previous (order: p1,p2,p3,p4 -> prev of p1 is p4)
   const state = makeBaseTurnState({ turnStep: 'mustDraw' });
-  let threw = false;
-  try {
-    reduce(state, { type: 'DRAW', playerId: 'p1', source: 'prevDiscard' });
-  } catch (e: any) {
-    threw = true;
-    simpleAssert(e.message === 'TAKE_DISCARD_MUST_MELD', 'draw from prevDiscard is rejected');
-  }
-  simpleAssert(threw, 'draw from prevDiscard throws');
+  const next = reduce(state, { type: 'DRAW', playerId: 'p1', source: 'prevDiscard' }) as TurnStateServer;
+  simpleAssert(next.turnStep === 'mustMeldDiscard', 'draw from prevDiscard -> mustMeldDiscard');
+  simpleAssert(!!next.takenDiscard, 'takenDiscard stored');
+  simpleAssert((next.discardPiles.p4 ?? []).length === 0, 'prev discard pile reduced');
+})();
+
+(function testReturnTakenDiscard() {
+  const state = makeBaseTurnState({ turnStep: 'mustDraw' });
+  const taken = reduce(state, { type: 'DRAW', playerId: 'p1', source: 'prevDiscard' }) as TurnStateServer;
+  const next = reduce(taken, { type: 'RETURN_TAKEN_DISCARD', playerId: 'p1' }) as TurnStateServer;
+  simpleAssert(next.turnStep === 'mustDraw', 'return tile -> mustDraw');
+  simpleAssert(!next.takenDiscard, 'takenDiscard cleared after return');
+  simpleAssert((next.discardPiles.p4 ?? []).length === 1, 'discard pile restored after return');
 })();
 
 // --- DISCARD penalty: joker ---
@@ -149,8 +154,8 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
   const next = reduce(state, { type: 'DISCARD', playerId: 'p1', tileId: 'a' }) as HandEndState;
   simpleAssert(next.phase === 'handEnd', 'deck empty ends hand');
   simpleAssert(next.result.reason === 'DECK_EMPTY', 'hand end reason DECK_EMPTY');
-  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'JOKER_IN_HAND');
-  simpleAssert(!!pen, 'joker-in-hand penalty applied at deck empty');
+  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'NO_OPEN');
+  simpleAssert(!!pen, 'no-open penalty applied at deck empty');
 })();
 
 (function testAllPairsEndsHand() {
@@ -172,8 +177,8 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
   }) as HandEndState;
   simpleAssert(next.phase === 'handEnd', 'all pairs ends hand');
   simpleAssert(next.result.reason === 'ALL_PAIRS', 'hand end reason ALL_PAIRS');
-  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'JOKER_IN_HAND');
-  simpleAssert(!!pen, 'joker-in-hand penalty applied at all pairs');
+  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'HAND_SUM_PAIRS');
+  simpleAssert(!!pen, 'pairs hand-sum penalty applied at all pairs');
 })();
 
 // --- OPEN_MELD: valid opening ---
