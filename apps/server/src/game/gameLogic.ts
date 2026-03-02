@@ -116,6 +116,7 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     currentPlayerId,
     // First player has 22 tiles — they skip drawing and go straight to discard
     turnStep: "mustDiscard",
+    openedBy: Object.fromEntries(playerIds.map((id) => [id, "none"])),
 
     deck,
     discardPiles: Object.fromEntries(playerIds.map((id) => [id, []])),
@@ -147,6 +148,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
 
     currentPlayerId: s.currentPlayerId,
     turnStep: s.turnStep,
+    openedBy: s.openedBy,
 
     deckCount: s.deck.length,
     discardPiles: s.discardPiles,

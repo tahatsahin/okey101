@@ -63,11 +63,11 @@ state = reduce(state, { type: 'DISCARD', playerId: secondPlayer, tileId: s2tile.
 const s2discard = state as TurnStateServer;
 simpleAssert(s2discard.currentPlayerId !== secondPlayer, 'turn moved after second player discard');
 
-// --- Third player takes previous discard and discards ---
+// --- Third player draws from deck and discards ---
 const thirdPlayer = s2discard.currentPlayerId;
-state = reduce(state, { type: 'DRAW', playerId: thirdPlayer, source: 'prevDiscard' });
+state = reduce(state, { type: 'DRAW', playerId: thirdPlayer, source: 'deck' });
 const s3draw = state as TurnStateServer;
-simpleAssert(s3draw.hands[thirdPlayer].length === 22, 'third player has 22 after taking discard');
+simpleAssert(s3draw.hands[thirdPlayer].length === 22, 'third player has 22 after draw');
 
 const s3tile = s3draw.hands[thirdPlayer][0]!;
 state = reduce(state, { type: 'DISCARD', playerId: thirdPlayer, tileId: s3tile.id });

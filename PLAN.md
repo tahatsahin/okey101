@@ -1,64 +1,53 @@
-# Okey101 Project Plan
+# Okey101 Project Plan (Todo List)
+Last updated: 2026-03-02
 
 ## Snapshot
-- Full-stack TypeScript monorepo with Socket.IO server and React client.
-- Core turn loop exists, but several Okey 101 rules are not yet enforced.
-- Validation logic is conservative and incomplete around jokers, runs, and layoffs.
+- (x) Baseline: full-stack TypeScript monorepo with Socket.IO server and React client.
+- (x) Baseline: core turn loop exists.
+- (x) Baseline: prior validation was conservative around jokers, runs, and layoffs.
 
 ## Phase 1: Rules-Correct Domain Model
-1. Model jokers explicitly:
-   - Represent wild okey tiles with assigned (color,value) in melds.
-   - Keep false jokers fixed to the current okey tile.
-2. Track per-player opening state:
-   - `openingMode`: `"none" | "runsSets" | "pairs"`.
-   - Enforce pair/runs-set restrictions after opening.
-3. Enforce discard-take rule:
-   - Remove/disable `DRAW` from `prevDiscard`.
-   - Use `TAKE_AND_MELD` only, and require the taken tile be used.
-   - If player has not opened, validate opening requirements in `TAKE_AND_MELD`.
-4. Fix meld validation correctness:
-   - Runs require same color; 1 is low only; no 12-13-1 wrap.
-   - Sets require unique colors; disallow duplicate colors in layoff.
-   - Allow multi-tile run layoffs by validating the entire extension set.
-5. Failed opening penalty:
-   - Invalid opening attempt applies +101 and leaves state unchanged.
+- (x) Track per-player opening state (`openedBy`).
+- (x) Enforce meld style after opening (pairs vs runs/sets) for `OPEN_MELD` and `TAKE_AND_MELD`.
+- (x) Enforce discard-take rule: disallow `DRAW` from `prevDiscard`.
+- (x) Require `TAKE_AND_MELD` to include the taken discard tile.
+- (x) Require opening requirements in `TAKE_AND_MELD` when player has not opened.
+- (x) Runs validation: same color; 1 is low only; no 12-13-1 wrap; jokers can fill gaps.
+- (x) Sets validation: unique colors; jokers allowed; no duplicate colors.
+- (x) Layoff validation uses combined meld validation (multi-tile run/set extensions).
+- (x) Failed opening attempt applies +101 and keeps state unchanged.
+- (x) Client UI: removed “Take Discard” draw-to-hand button.
+- (x) Tests updated: discard-take rejection, joker in runs/sets, mixed-color run rejection, 12-13-1 wrap invalid.
+- (x) False jokers remain fixed to current okey tile in validation and counting.
+- (x) Represent wild okey tiles with assigned (color,value) in melds (persisted in state).
+- ( ) Enforce opening-mode restrictions for any future meld actions beyond `OPEN_MELD`/`TAKE_AND_MELD` as needed.
+- (x) Expose opening mode in client UI.
 
 ## Phase 2: End Conditions & Scoring
-1. End-of-hand detection:
-   - Win on discard of last tile.
-   - Deck empty (indicator only) ends hand.
-   - All four players opened with pairs ends hand.
-2. Scoring summary:
-   - Apply joker-in-hand penalties.
-   - Persist per-hand results in room state.
-3. Dealer rotation and new deal flow.
+- ( ) Win on discard of last tile.
+- ( ) Deck empty (indicator only) ends hand.
+- ( ) All four players opened with pairs ends hand.
+- ( ) Apply joker-in-hand penalties at hand end.
+- ( ) Persist per-hand results in room state.
+- ( ) Dealer rotation and new deal flow.
 
 ## Phase 3: UX & Gameplay Loop
-1. Client actions aligned to rules:
-   - Remove “Take Discard” button or make it conditional on immediate meld.
-   - Show opening mode and whether player has opened.
-2. Table meld UX:
-   - Show meld owner and resolved joker values.
-   - Highlight legal layoffs and extendable tiles.
-3. End-of-hand summary UI with scores and penalties.
+- (x) Show opening mode and whether player has opened.
+- ( ) Table meld UX: show meld owner and resolved joker values.
+- ( ) Highlight legal layoffs and extendable tiles.
+- ( ) End-of-hand summary UI with scores and penalties.
 
 ## Phase 4: Quality & Cleanup
-1. Consolidate duplicated logic:
-   - Use `tileUtils` for deck creation/shuffle/indicator selection.
-2. Align event names:
-   - Use `C2S_EVENT`/`C2S_EXTRA_EVENT` constants consistently.
-3. Stronger validation:
-   - Add Zod schema for `GameStateClient` payloads.
-4. Tests:
-   - Joker as wild in runs/sets and layoffs.
-   - Mixed-color run rejection.
-   - Multi-tile layoff acceptance.
-   - Discard-take must be melded.
-   - Opening >=101 and 21-tile exception.
+- ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.
+- ( ) Align event names using `C2S_EVENT`/`C2S_EXTRA_EVENT` constants consistently.
+- ( ) Add Zod schema for `GameStateClient` payloads.
+- (x) Tests: opening >=101 and 21-tile exception.
+- (x) Tests: discard-take must be melded.
+- (x) Tests: mixed-color run rejection.
+- (x) Tests: joker as wild in layoffs.
+- (x) Tests: multi-tile layoff acceptance.
 
 ## Nice-to-Have Features
-- Game log/history and replay of last turn.
-- Chat/emotes.
-- Spectator mode.
-- Auto-sort hand (by color/run) and smart grouping hints.
-- Basic anti-stall (soft timers) and reconnect indicators.
+- ( ) Game log/history and replay of last turn.
+- ( ) Auto-sort hand (by color/run) and smart grouping hints.
+- ( ) Basic anti-stall (soft timers) and reconnect indicators.

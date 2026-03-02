@@ -1,4 +1,4 @@
-import type { PlayerId, RoomId, Tile, OkeyInfo } from "./ids.js";
+import type { PlayerId, RoomId, Tile, OkeyInfo, TileColor, TileValue } from "./ids.js";
 
 export type LobbyPlayerPublic = {
   playerId: PlayerId;
@@ -14,12 +14,17 @@ export type LobbyState = {
 
 export type TurnStep = "mustDraw" | "mustDiscard";
 
+export type TableMeldTile = Tile & {
+  assigned?: { color: TileColor; value: TileValue };
+};
+
 export type TurnStateServer = {
   phase: "turn";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
+  openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
 
   deck: Tile[];
 
@@ -28,7 +33,7 @@ export type TurnStateServer = {
 
   indicator: Tile;
   okey: OkeyInfo;
-  tableMelds?: { meldId: string; playerId: PlayerId; tiles: Tile[] }[];
+  tableMelds?: { meldId: string; playerId: PlayerId; tiles: TableMeldTile[] }[];
   penalties?: { playerId: PlayerId; points: number; reason?: string }[];
 };
 
@@ -40,6 +45,7 @@ export type TurnStateClient = {
   players: LobbyPlayerPublic[];
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
+  openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
 
   deckCount: number;
 
@@ -49,7 +55,7 @@ export type TurnStateClient = {
 
   indicator: Tile;
   okey: OkeyInfo;
-  tableMelds: { meldId: string; playerId: PlayerId; tiles: Tile[] }[];
+  tableMelds: { meldId: string; playerId: PlayerId; tiles: TableMeldTile[] }[];
   penalties: { playerId: PlayerId; points: number; reason?: string }[];
 };
 

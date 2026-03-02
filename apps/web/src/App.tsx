@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import "./App.css";
 import { socket } from "./socket.ts";
 import type { ServerGameStatePayload } from "./types.ts";
-import type { Tile } from "@okey/shared";
+import type { Tile, TableMeldTile } from "@okey/shared";
 
 type JoinAck =
   | { ok: true; playerId: string; roomId: string; token: string }
@@ -12,12 +12,16 @@ type SimpleAck = { ok: true } | { ok: false; error: string };
 
 /* ── Tile helpers ─────────────────────────────────────── */
 
-function tileColorClass(t: Tile): string {
+function tileColorClass(t: Tile | TableMeldTile): string {
+  const assigned = (t as TableMeldTile).assigned;
+  if (assigned) return `color-${assigned.color}`;
   if (t.kind === "fakeJoker") return "fake-joker";
   return `color-${t.color}`;
 }
 
-function tileLabel(t: Tile): string {
+function tileLabel(t: Tile | TableMeldTile): string {
+  const assigned = (t as TableMeldTile).assigned;
+  if (assigned) return String(assigned.value);
   if (t.kind === "fakeJoker") return "⭐";
   return String(t.value);
 }
@@ -60,7 +64,7 @@ function TileChip({
   onDragOver,
   onDrop,
 }: {
-  tile?: Tile;
+  tile?: Tile | TableMeldTile;
   selected?: boolean;
   disabled?: boolean;
   onClick?: () => void;
@@ -318,6 +322,7 @@ function GameBoard({
 
   const tableMelds = state.tableMelds ?? [];
   const penalties = state.penalties ?? [];
+  const openedMode = playerId ? (state.openedBy[playerId] ?? "none") : "none";
 
   // Local slot map: slotIndex → tileId (supports gaps / free placement)
   const [slots, setSlots] = useState<(string | null)[]>(() =>
@@ -542,6 +547,9 @@ function GameBoard({
                 : "Discard a tile"
               : `${playerMap[state.currentPlayerId]?.name ?? "?"}'s turn`}
           </span>
+          <span className="open-status">
+            Open: {openedMode === "none" ? "Not opened" : openedMode === "pairs" ? "Pairs" : "Runs/Sets"}
+          </span>
 
           <div className="action-buttons">
             <button
@@ -549,12 +557,6 @@ function GameBoard({
               disabled={!isMyTurn || state.turnStep !== "mustDraw"}
             >
               Draw
-            </button>
-            <button
-              onClick={() => onDraw("prevDiscard")}
-              disabled={!isMyTurn || state.turnStep !== "mustDraw" || !prevTop}
-            >
-              Take Discard
             </button>
             {isMyTurn &&
               state.turnStep === "mustDiscard" &&

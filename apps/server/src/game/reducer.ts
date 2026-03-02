@@ -1,6 +1,6 @@
 import type { GameStateServer, PlayerId, TileId, Tile } from "@okey/shared";
 import { startTurnGame } from "./gameLogic.js";
-import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld } from "./validate.js";
+import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld, validateMeldSet, assignMeldTiles } from "./validate.js";
 import { randomUUID } from "crypto";
 
 function isOkeyTile(tile: Tile, okey: { color: string; value: number }): boolean {
@@ -76,17 +76,8 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         drawnTile = tile;
         nextDeck = state.deck.slice(0, -1);
       } else {
-        // draw from previous player's discard pile (top tile)
-        const prevPile = state.discardPiles[prevPlayerId] ?? [];
-        const tile = prevPile[prevPile.length - 1];
-        if (!tile) throw new Error("PREV_DISCARD_EMPTY");
-
-        drawnTile = tile;
-
-        nextDiscardPiles = {
-          ...state.discardPiles,
-          [prevPlayerId]: prevPile.slice(0, -1)
-        };
+        // Taking previous discard into hand is not allowed; must use TAKE_AND_MELD.
+        throw new Error("TAKE_DISCARD_MUST_MELD");
       }
 
       return {
@@ -105,10 +96,11 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (state.phase !== "turn") throw new Error("BAD_PHASE");
       if (state.currentPlayerId !== action.playerId) throw new Error("NOT_YOUR_TURN");
 
-      // allow opening when mustDraw (first player) or when mustDiscard (after draw)
-      if (!(state.turnStep === "mustDraw" || state.turnStep === "mustDiscard")) throw new Error("INVALID_STEP");
+      if (state.turnStep !== "mustDiscard") throw new Error("INVALID_STEP");
 
       const hand = state.hands[action.playerId] ?? [];
+
+      const openedMode = state.openedBy?.[action.playerId] ?? "none";
 
       // resolve tile objects for each meld
       const meldObjs: any[] = [];
@@ -124,9 +116,23 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         meldObjs.push(tiles);
       }
 
-      // validate opening requirements
-      const openRes = validateOpeningRequirements(meldObjs, state.okey, true);
-      if (!openRes.ok) throw new Error("OPENING_REQUIREMENTS_NOT_MET");
+      const meldSet = validateMeldSet(meldObjs, state.okey);
+      if (!meldSet.ok) throw new Error("INVALID_MELD_SET");
+
+      if (openedMode === "none") {
+        // validate opening requirements
+        const openRes = validateOpeningRequirements(meldObjs, state.okey, true);
+        if (!openRes.ok) {
+          const penalties = (state.penalties ?? []).concat({
+            playerId: action.playerId,
+            points: 101,
+            reason: "FAILED_OPENING"
+          });
+          return { ...state, penalties };
+        }
+      } else if (meldSet.mode !== openedMode) {
+        throw new Error("MELD_STYLE_MISMATCH");
+      }
 
       // remove tiles from hand and add to tableMelds
       const newHands = { ...state.hands };
@@ -138,17 +144,22 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
 
       const nextMelds = (state.tableMelds ?? []).slice();
       for (const tiles of meldObjs) {
-        nextMelds.push({ meldId: randomUUID(), playerId: action.playerId, tiles });
+        nextMelds.push({ meldId: randomUUID(), playerId: action.playerId, tiles: assignMeldTiles(tiles, state.okey) });
       }
 
+      const openedBy = { ...(state.openedBy ?? {}) };
+      if (openedMode === "none") openedBy[action.playerId] = meldSet.mode;
+
       // after opening, player must discard
-      return { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard" };
+      return { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
     }
 
     case "LAYOFF": {
       if (state.phase !== "turn") throw new Error("BAD_PHASE");
       if (state.currentPlayerId !== action.playerId) throw new Error("NOT_YOUR_TURN");
       if (state.turnStep !== "mustDiscard") throw new Error("INVALID_STEP");
+
+      if ((state.openedBy?.[action.playerId] ?? "none") === "none") throw new Error("MUST_OPEN_FIRST");
 
       const table = (state.tableMelds ?? []).find((m) => m.meldId === action.tableMeldId);
       if (!table) throw new Error("NO_SUCH_TABLE_MELD");
@@ -167,7 +178,11 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const newHands = { ...state.hands };
       for (const t of tiles) newHands[action.playerId] = newHands[action.playerId].filter((x) => x.id !== t.id);
 
-      const newMelds = (state.tableMelds ?? []).map((m) => (m.meldId === table.meldId ? { ...m, tiles: m.tiles.concat(tiles) } : m));
+      const newMelds = (state.tableMelds ?? []).map((m) => {
+        if (m.meldId !== table.meldId) return m;
+        const combined = m.tiles.concat(tiles);
+        return { ...m, tiles: assignMeldTiles(combined, state.okey) };
+      });
 
       return { ...state, hands: newHands, tableMelds: newMelds };
     }
@@ -211,6 +226,23 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         meldObjs.push(tiles);
       }
 
+      const openedMode = state.openedBy?.[action.playerId] ?? "none";
+      const meldSet = validateMeldSet(meldObjs, state.okey);
+      if (!meldSet.ok) throw new Error("INVALID_MELD_SET");
+      if (openedMode === "none") {
+        const openRes = validateOpeningRequirements(meldObjs, state.okey, false);
+        if (!openRes.ok) {
+          const penalties = (state.penalties ?? []).concat({
+            playerId: action.playerId,
+            points: 101,
+            reason: "FAILED_OPENING"
+          });
+          return { ...state, penalties };
+        }
+      } else if (meldSet.mode !== openedMode) {
+        throw new Error("MELD_STYLE_MISMATCH");
+      }
+
       // remove taken tile from prev pile and remove other tiles from hand
       const newDiscardPiles = { ...state.discardPiles, [prevPlayerId]: prevPile.slice(0, -1) };
       const newHands = { ...state.hands };
@@ -222,9 +254,12 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       }
 
       const nextMelds = (state.tableMelds ?? []).slice();
-      for (const tiles of meldObjs) nextMelds.push({ meldId: randomUUID(), playerId: action.playerId, tiles });
+      for (const tiles of meldObjs) nextMelds.push({ meldId: randomUUID(), playerId: action.playerId, tiles: assignMeldTiles(tiles, state.okey) });
 
-      return { ...state, discardPiles: newDiscardPiles, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard" };
+      const openedBy = { ...(state.openedBy ?? {}) };
+      if (openedMode === "none") openedBy[action.playerId] = meldSet.mode;
+
+      return { ...state, discardPiles: newDiscardPiles, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
     }
 
     case "DISCARD": {

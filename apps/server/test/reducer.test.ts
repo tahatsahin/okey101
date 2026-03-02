@@ -28,6 +28,7 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
     players,
     currentPlayerId: 'p1',
     turnStep: 'mustDiscard',
+    openedBy: { p1: 'none', p2: 'none', p3: 'none', p4: 'none' },
     deck: [tile('deck-1', 'blue', 5)],
     discardPiles: { p1: [], p2: [], p3: [], p4: [tile('dp4-1', 'yellow', 3)] },
     hands: {
@@ -59,10 +60,14 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
 (function testDrawFromPrevDiscard() {
   // p1 is current; p4 is previous (order: p1,p2,p3,p4 -> prev of p1 is p4)
   const state = makeBaseTurnState({ turnStep: 'mustDraw' });
-  const next = reduce(state, { type: 'DRAW', playerId: 'p1', source: 'prevDiscard' }) as TurnStateServer;
-  simpleAssert(next.turnStep === 'mustDiscard', 'draw from prevDiscard -> mustDiscard');
-  simpleAssert(next.hands.p1.some((t) => t.id === 'dp4-1'), 'hand contains taken discard tile');
-  simpleAssert((next.discardPiles.p4 ?? []).length === 0, 'prev discard pile shrunk');
+  let threw = false;
+  try {
+    reduce(state, { type: 'DRAW', playerId: 'p1', source: 'prevDiscard' });
+  } catch (e: any) {
+    threw = true;
+    simpleAssert(e.message === 'TAKE_DISCARD_MUST_MELD', 'draw from prevDiscard is rejected');
+  }
+  simpleAssert(threw, 'draw from prevDiscard throws');
 })();
 
 // --- DISCARD penalty: joker ---
@@ -150,14 +155,9 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
   const state = makeBaseTurnState({
     hands: { p1: hand, p2: [], p3: [], p4: [] },
   });
-  let threw = false;
-  try {
-    reduce(state, { type: 'OPEN_MELD', playerId: 'p1', melds: [['a1','a2','a3']] });
-  } catch (e: any) {
-    threw = true;
-    simpleAssert(e.message === 'OPENING_REQUIREMENTS_NOT_MET', 'correct error for insufficient opening');
-  }
-  simpleAssert(threw, 'reducer throws on insufficient opening');
+  const next = reduce(state, { type: 'OPEN_MELD', playerId: 'p1', melds: [['a1','a2','a3']] }) as TurnStateServer;
+  const pen = (next.penalties ?? []).find((p) => p.playerId === 'p1' && p.reason === 'FAILED_OPENING');
+  simpleAssert(!!pen, 'penalty applied for insufficient opening');
 })();
 
 // --- TAKE_AND_MELD: taken tile must be used ---
@@ -170,6 +170,7 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
       p1: [tile('h1','yellow',4), tile('h2','yellow',5), tile('h3','blue',9)],
       p2: [], p3: [], p4: [],
     },
+    openedBy: { p1: 'runsSets', p2: 'none', p3: 'none', p4: 'none' },
   });
 
   // meld that does NOT include dp-top should fail
