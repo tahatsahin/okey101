@@ -30,6 +30,7 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
     turnStep: 'mustDiscard',
     openedBy: { p1: 'none', p2: 'none', p3: 'none', p4: 'none' },
     handHistory: [],
+    dealerIndex: 0,
     deck: [tile('deck-1', 'blue', 5)],
     discardPiles: { p1: [], p2: [], p3: [], p4: [tile('dp4-1', 'yellow', 3)] },
     hands: {

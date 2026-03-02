@@ -36,6 +36,7 @@ export type TurnStateServer = {
   turnStep: TurnStep;
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
   handHistory: HandResult[];
+  dealerIndex: number;
 
   deck: Tile[];
 
@@ -54,6 +55,7 @@ export type HandEndState = {
   players: LobbyPlayerPublic[];
   result: HandResult;
   handHistory: HandResult[];
+  dealerIndex: number;
 };
 
 export type GameStateServer = LobbyState | TurnStateServer | HandEndState;
@@ -65,6 +67,7 @@ export type TurnStateClient = {
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
+  dealerIndex: number;
 
   deckCount: number;
 

@@ -10,9 +10,11 @@ Okey 101 is a traditional Turkish tile game played with 106 tiles (4 colors × 1
 - 21/22 tile dealing (first player gets 22, skips initial draw)
 - Runs, sets, and pairs melding
 - Opening requirement (≥101 points or 5+ pairs)
-- Take-from-discard-and-meld-immediately rule
+- Take-from-discard-and-meld-immediately rule (cannot take into hand)
 - Penalty system (+101 for joker discard, extendable tile discard, failed opening)
 - Layoffs onto existing table melds
+- Hand end conditions (win on last discard, deck empty, all-pairs)
+- Dealer rotation per hand
 
 ## Tech Stack
 
@@ -114,7 +116,7 @@ npm -w apps/server test
 3. Any player can click **Start Game** once all 4 are ready.
 4. The first player (dealer's right) starts with 22 tiles and must discard without drawing.
 5. On your turn:
-   - **Draw** from the deck or **Take Discard** from the previous player.
+   - **Draw** from the deck, or **Take & Meld** the previous discard immediately.
    - Optionally **Open Meld** (runs/sets ≥101 points, or 5+ pairs) or **Layoff** onto table melds.
    - **Discard** one tile to end your turn.
 6. First player to meld all tiles and discard their last tile wins!

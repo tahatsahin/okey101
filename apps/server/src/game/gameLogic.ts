@@ -67,11 +67,14 @@ function pickIndicatorAndOkey(deck: Tile[]): { indicator: Tile; okey: OkeyInfo }
 
 
 export function startTurnGame(prev: GameStateServer): TurnStateServer {
-  if (prev.phase !== "lobby") throw new Error("BAD_PHASE");
+  if (prev.phase !== "lobby" && prev.phase !== "handEnd") throw new Error("BAD_PHASE");
 
   const playerIds = prev.players.map((p) => p.playerId);
   if (playerIds.length !== 4) throw new Error("NEED_4_PLAYERS");
   if (!prev.players.every((p) => p.ready)) throw new Error("NOT_ALL_READY");
+
+  const prevDealerIndex = prev.phase === "handEnd" ? prev.dealerIndex : 0;
+  const dealerIndex = (prevDealerIndex + 1) % playerIds.length;
 
   const deck = makeDeck();
   shuffleInPlace(deck);
@@ -81,8 +84,6 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
   const hands: Record<PlayerId, Tile[]> = Object.fromEntries(playerIds.map((id) => [id, [] as Tile[]]));
 
   // Deal according to AGENTS.md: players get 21 tiles, player to dealer's right gets 22
-  // Assume dealer is players[0]; first player to act is dealer's right
-  const dealerIndex = 0;
   const firstIdx = (dealerIndex - 1 + playerIds.length) % playerIds.length;
   // distribute until targets met
   const targets: Record<PlayerId, number> = Object.fromEntries(playerIds.map((id) => [id, 21]));
@@ -117,7 +118,8 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     // First player has 22 tiles — they skip drawing and go straight to discard
     turnStep: "mustDiscard",
     openedBy: Object.fromEntries(playerIds.map((id) => [id, "none"])),
-    handHistory: [],
+    handHistory: prev.phase === "handEnd" ? prev.handHistory : [],
+    dealerIndex,
 
     deck,
     discardPiles: Object.fromEntries(playerIds.map((id) => [id, []])),
@@ -150,6 +152,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
     currentPlayerId: s.currentPlayerId,
     turnStep: s.turnStep,
     openedBy: s.openedBy,
+    dealerIndex: s.dealerIndex,
 
     deckCount: s.deck.length,
     discardPiles: s.discardPiles,

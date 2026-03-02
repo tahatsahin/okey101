@@ -31,7 +31,8 @@ function endHand(state: TurnStateServer, result: HandResult): HandEndState {
     roomId: state.roomId,
     players: state.players,
     result,
-    handHistory
+    handHistory,
+    dealerIndex: state.dealerIndex
   };
 }
 
@@ -74,11 +75,13 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
     }
 
     case "START_GAME": {
-      if (state.phase !== "lobby") throw new Error("BAD_PHASE");
+      if (state.phase !== "lobby" && state.phase !== "handEnd") throw new Error("BAD_PHASE");
 
-      const hostId = state.players[0]?.playerId;
-      if (!hostId) throw new Error("NEED_4_PLAYERS");
-      if (action.playerId !== hostId) throw new Error("NOT_HOST");
+      if (state.phase === "lobby") {
+        const hostId = state.players[0]?.playerId;
+        if (!hostId) throw new Error("NEED_4_PLAYERS");
+        if (action.playerId !== hostId) throw new Error("NOT_HOST");
+      }
       if (state.players.length !== 4) throw new Error("NEED_4_PLAYERS");
       if (!state.players.every((p) => p.ready)) throw new Error("NOT_ALL_READY");
 

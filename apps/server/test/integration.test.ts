@@ -32,6 +32,7 @@ simpleAssert(state.phase === 'turn', 'phase is turn after start');
 const ts = state as TurnStateServer;
 simpleAssert(ts.tableMelds !== undefined, 'tableMelds initialized');
 simpleAssert(ts.penalties !== undefined, 'penalties initialized');
+simpleAssert(typeof ts.dealerIndex === 'number', 'dealerIndex initialized');
 
 // Verify dealing: first player (dealer-right) has 22, others 21
 const firstPlayer = ts.currentPlayerId;
@@ -78,3 +79,21 @@ simpleAssert(s3discard.currentPlayerId !== thirdPlayer, 'turn moved after third 
 simpleAssert(Array.isArray(s3discard.penalties), 'penalties array is intact');
 
 console.log(`\nIntegration: ${players.length} players completed ${3} turns without errors.`);
+
+// --- End first hand and start next ---
+const endPlayer = s3discard.currentPlayerId;
+const endReady: TurnStateServer = {
+  ...(s3discard as TurnStateServer),
+  currentPlayerId: endPlayer,
+  turnStep: 'mustDiscard',
+  hands: { ...s3discard.hands, [endPlayer]: [s3discard.hands[endPlayer][0]!] },
+};
+const handEndState = reduce(endReady, {
+  type: 'DISCARD',
+  playerId: endPlayer,
+  tileId: endReady.hands[endPlayer][0]!.id,
+}) as any;
+simpleAssert(handEndState.phase === 'handEnd', 'handEnd reached after finishing discard');
+const newStart = reduce(handEndState, { type: 'START_GAME', playerId: 'p1' }) as TurnStateServer;
+simpleAssert(newStart.phase === 'turn', 'new hand started from handEnd');
+simpleAssert(newStart.dealerIndex === (ts.dealerIndex + 1) % 4, 'dealerIndex rotated');

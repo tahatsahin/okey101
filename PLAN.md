@@ -29,7 +29,7 @@ Last updated: 2026-03-02
 - (x) All four players opened with pairs ends hand.
 - (x) Apply joker-in-hand penalties at hand end.
 - (x) Persist per-hand results in room state.
-- ( ) Dealer rotation and new deal flow.
+- (x) Dealer rotation and new deal flow.
 
 ## Phase 3: UX & Gameplay Loop
 - (x) Show opening mode and whether player has opened.

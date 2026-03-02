@@ -272,10 +272,11 @@ export default function App() {
       <div className="join-screen">
         <div className="lobby-card">
           <h2>Hand Ended</h2>
-          <div className="hand-end-summary">
-            <div>Reason: {gs.result.reason}</div>
-            {winner && <div>Winner: {winner}</div>}
-            {gs.result.penalties.length > 0 && (
+        <div className="hand-end-summary">
+          <div>Reason: {gs.result.reason}</div>
+          {winner && <div>Winner: {winner}</div>}
+          <div>Dealer: {gs.players[gs.dealerIndex]?.name ?? gs.dealerIndex}</div>
+          {gs.result.penalties.length > 0 && (
               <div className="penalty-list">
                 {gs.result.penalties.map((p, i) => (
                   <div key={i} className="penalty-item">
@@ -575,6 +576,9 @@ function GameBoard({
           </span>
           <span className="open-status">
             Open: {openedMode === "none" ? "Not opened" : openedMode === "pairs" ? "Pairs" : "Runs/Sets"}
+          </span>
+          <span className="open-status">
+            Dealer: {state.players[state.dealerIndex]?.name ?? state.dealerIndex}
           </span>
 
           <div className="action-buttons">
