@@ -9,7 +9,7 @@ Last updated: 2026-03-02
 ## Phase 1: Rules-Correct Domain Model
 - (x) Track per-player opening state (`openedBy`).
 - (x) Enforce meld style after opening (pairs vs runs/sets) for `OPEN_MELD` and `TAKE_AND_MELD`.
-- (x) Enforce discard-take rule: disallow `DRAW` from `prevDiscard`.
+- (x) Enforce discard-take rule: `DRAW` from `prevDiscard` enters must-meld state with return option.
 - (x) Require `TAKE_AND_MELD` to include the taken discard tile.
 - (x) Require opening requirements in `TAKE_AND_MELD` when player has not opened.
 - (x) Runs validation: same color; 1 is low only; no 12-13-1 wrap; jokers can fill gaps.
@@ -27,9 +27,10 @@ Last updated: 2026-03-02
 - (x) Win on discard of last tile.
 - (x) Deck empty (indicator only) ends hand.
 - (x) All four players opened with pairs ends hand.
-- (x) Apply joker-in-hand penalties at hand end.
+- (x) End-of-round penalties: no-open = 202, opened hand sum, pairs double.
 - (x) Persist per-hand results in room state.
 - (x) Dealer rotation and new deal flow.
+- (x) Match flow: 11 rounds, auto-start on all-ready, reset after match end.
 
 ## Phase 3: UX & Gameplay Loop
 - (x) Show opening mode and whether player has opened.
@@ -40,6 +41,9 @@ Last updated: 2026-03-02
 - (x) Drag-and-drop discard/draw using deck and correct discard pile targets.
 - (x) Free-form hand layout (no fixed grid slots; non-overlapping placement).
 - (x) Bots: host can add bots in lobby; bots draw from deck only and discard drawn tile (if okey, discard a random non-okey).
+- (x) Discard-take flow: take discard into must-meld state with return tile button.
+- (x) Grouping UI: hide grouped tiles, show group totals and pair counts, restore on clear/return/discard.
+- (x) Draw drop positioning: place drawn tile at drop location when empty.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.
