@@ -36,6 +36,9 @@ Last updated: 2026-03-02
 - ( ) Table meld UX: show meld owner and resolved joker values.
 - ( ) Highlight legal layoffs and extendable tiles.
 - (x) End-of-hand summary UI with scores and penalties.
+- (x) Discard piles positioned between adjacent players (seat-relative layout).
+- (x) Drag-and-drop discard/draw using deck and correct discard pile targets.
+- (x) Free-form hand layout (no fixed grid slots; non-overlapping placement).
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

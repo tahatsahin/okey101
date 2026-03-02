@@ -5,6 +5,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
 :root {
+  --tile-w: 42px;
+  --tile-h: 58px;
+  --hand-row-gap: 12px;
   --tile-red: #d32f2f;
   --tile-black: #1a1a1a;
   --tile-blue: #1565c0;
@@ -289,6 +292,49 @@ body {
   opacity: 0.8;
 }
 
+/* ── Discard Ring ─────────────────────────────────────── */
+
+.discard-ring {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.discard-pile {
+  position: absolute;
+  width: 48px;
+  height: 66px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.discard-pile.active-drop {
+  box-shadow: 0 0 12px rgba(0, 188, 212, 0.6);
+  border-radius: 10px;
+}
+
+.discard-bottom-left { left: 20%; bottom: 26%; }
+.discard-top-left { left: 28%; top: 22%; }
+.discard-top-right { right: 28%; top: 22%; }
+.discard-bottom-right { right: 20%; bottom: 26%; }
+
+.discard-empty {
+  width: 42px;
+  height: 58px;
+  border-radius: 8px;
+  border: 2px dashed rgba(255,255,255,0.25);
+  color: rgba(255,255,255,0.5);
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 /* ── Table Melds ──────────────────────────────────────── */
 
 .table-melds {
@@ -321,8 +367,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  width: 42px;
-  height: 58px;
+  width: var(--tile-w);
+  height: var(--tile-h);
   border-radius: 8px;
   background: var(--tile-bg);
   border: 2px solid var(--tile-border);
@@ -482,26 +528,22 @@ body {
 }
 .meld-preview-group .tile { width: 30px; height: 42px; font-size: 0.85rem; }
 
-/* Your discard */
-.your-discard {
-  height: 24px;
-  display: flex;
-  gap: 4px;
-  align-items: center;
-}
-.your-discard-tile .tile { width: 30px; height: 42px; font-size: 0.85rem; opacity: 0.7; }
-
-/* Tile rack */
-.tile-rack {
+/* Free-form hand area */
+.hand-area {
   width: 100%;
   max-width: 900px;
-  background: var(--rack-wood);
+  height: calc(var(--tile-h) * 2 + var(--hand-row-gap) + 24px);
+  background:
+    linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)) 0 0 / 100% var(--tile-h) no-repeat,
+    linear-gradient(rgba(255,255,255,0.08), rgba(255,255,255,0.08)) 0 calc(var(--tile-h) + var(--hand-row-gap)) / 100% var(--tile-h) no-repeat,
+    var(--rack-wood);
   border-radius: 12px 12px 4px 4px;
-  padding: 10px 12px 14px;
+  padding: 8px 10px 10px;
   box-shadow: var(--rack-shadow), inset 0 1px 0 rgba(255,255,255,0.2);
   position: relative;
+  overflow: hidden;
 }
-.tile-rack::before {
+.hand-area::before {
   content: "";
   position: absolute;
   top: 0; left: 0; right: 0;
@@ -510,42 +552,10 @@ body {
   border-radius: 12px 12px 0 0;
 }
 
-.rack-grid {
-  display: grid;
-  grid-template-columns: repeat(15, 1fr);
-  gap: 3px;
-}
-
-.rack-slot {
-  aspect-ratio: 42 / 58;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 6px;
-  border: 2px dashed transparent;
-  transition: border-color 0.12s, background 0.12s;
-  min-height: 0;
-}
-.rack-slot.empty {
-  border-color: rgba(255,255,255,0.1);
-  background: rgba(0,0,0,0.08);
-}
-.rack-slot.empty:hover {
-  border-color: rgba(255,255,255,0.25);
-  background: rgba(0,0,0,0.15);
-}
-
-/* Tiles inside grid slots fill their cell */
-.rack-slot .tile {
-  width: 100%;
-  height: 100%;
-  font-size: clamp(0.7rem, 1.8vw, 1.2rem);
-}
-.rack-slot .tile .tile-value {
-  font-size: clamp(0.8rem, 2vw, 1.3rem);
-}
-.rack-slot .tile .tile-dot {
-  width: 5px; height: 5px;
+.hand-tile {
+  position: absolute;
+  width: var(--tile-w);
+  height: var(--tile-h);
 }
 
 /* Discard button style */
