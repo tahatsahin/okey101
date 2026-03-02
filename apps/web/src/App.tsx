@@ -264,6 +264,32 @@ export default function App() {
     );
   }
 
+  if (gs.phase === "handEnd") {
+    const winner = gs.result.winnerId
+      ? gs.players.find((p) => p.playerId === gs.result.winnerId)?.name ?? gs.result.winnerId
+      : null;
+    return (
+      <div className="join-screen">
+        <div className="lobby-card">
+          <h2>Hand Ended</h2>
+          <div className="hand-end-summary">
+            <div>Reason: {gs.result.reason}</div>
+            {winner && <div>Winner: {winner}</div>}
+            {gs.result.penalties.length > 0 && (
+              <div className="penalty-list">
+                {gs.result.penalties.map((p, i) => (
+                  <div key={i} className="penalty-item">
+                    {gs.players.find((pl) => pl.playerId === p.playerId)?.name ?? p.playerId}: +{p.points} ({p.reason ?? ""})
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   /* ── Game board ── */
   return (
     <GameBoard

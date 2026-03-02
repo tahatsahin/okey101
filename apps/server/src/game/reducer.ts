@@ -1,4 +1,4 @@
-import type { GameStateServer, PlayerId, TileId, Tile } from "@okey/shared";
+import type { GameStateServer, HandEndState, HandResult, Penalty, PlayerId, TileId, Tile, TurnStateServer } from "@okey/shared";
 import { startTurnGame } from "./gameLogic.js";
 import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld, validateMeldSet, assignMeldTiles } from "./validate.js";
 import { randomUUID } from "crypto";
@@ -10,6 +10,34 @@ function isOkeyTile(tile: Tile, okey: { color: string; value: number }): boolean
 function isFinishingDiscard(hand: Tile[]): boolean {
   // hand after removing discarded tile will be empty => finishing
   return hand.length === 0;
+}
+
+function jokerInHandPenalties(state: TurnStateServer): Penalty[] {
+  const penalties: Penalty[] = [];
+  for (const p of state.players) {
+    const hand = state.hands[p.playerId] ?? [];
+    const count = hand.filter((t) => isOkeyTile(t, state.okey)).length;
+    if (count > 0) {
+      penalties.push({ playerId: p.playerId, points: 101 * count, reason: "JOKER_IN_HAND" });
+    }
+  }
+  return penalties;
+}
+
+function endHand(state: TurnStateServer, result: HandResult): HandEndState {
+  const handHistory = [...(state.handHistory ?? []), result];
+  return {
+    phase: "handEnd",
+    roomId: state.roomId,
+    players: state.players,
+    result,
+    handHistory
+  };
+}
+
+function allPairsOpened(openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">): boolean {
+  const vals = Object.values(openedBy);
+  return vals.length === 4 && vals.every((v) => v === "pairs");
 }
 
 export type GameAction =
@@ -151,7 +179,12 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (openedMode === "none") openedBy[action.playerId] = meldSet.mode;
 
       // after opening, player must discard
-      return { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
+      const nextState: TurnStateServer = { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
+      if (allPairsOpened(openedBy)) {
+        const penalties = (nextState.penalties ?? []).concat(jokerInHandPenalties(nextState));
+        return endHand(nextState, { reason: "ALL_PAIRS", penalties });
+      }
+      return nextState;
     }
 
     case "LAYOFF": {
@@ -259,7 +292,19 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const openedBy = { ...(state.openedBy ?? {}) };
       if (openedMode === "none") openedBy[action.playerId] = meldSet.mode;
 
-      return { ...state, discardPiles: newDiscardPiles, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
+      const nextState: TurnStateServer = {
+        ...state,
+        discardPiles: newDiscardPiles,
+        hands: newHands,
+        tableMelds: nextMelds,
+        turnStep: "mustDiscard",
+        openedBy
+      };
+      if (allPairsOpened(openedBy)) {
+        const penalties = (nextState.penalties ?? []).concat(jokerInHandPenalties(nextState));
+        return endHand(nextState, { reason: "ALL_PAIRS", penalties });
+      }
+      return nextState;
     }
 
     case "DISCARD": {
@@ -294,7 +339,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const order = state.players.map((p) => p.playerId);
       const curIdx = order.indexOf(state.currentPlayerId);
       const next = order[(curIdx + 1) % order.length]!;
-      return {
+      const nextState: TurnStateServer = {
         ...state,
         hands: { ...state.hands, [action.playerId]: newHand },
         discardPiles: {
@@ -305,6 +350,14 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         currentPlayerId: next,
         turnStep: "mustDraw"
       };
+      if (finishing) {
+        return endHand(nextState, { reason: "WIN", winnerId: action.playerId, penalties });
+      }
+      if (nextState.deck.length === 0) {
+        const endPenalties = penalties.concat(jokerInHandPenalties(nextState));
+        return endHand(nextState, { reason: "DECK_EMPTY", penalties: endPenalties });
+      }
+      return nextState;
     }
 
     case "REORDER_HAND": {

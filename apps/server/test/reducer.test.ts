@@ -1,4 +1,4 @@
-import type { PlayerId, Tile, TileValue, TileColor, OkeyInfo, TurnStateServer, LobbyPlayerPublic } from '@okey/shared';
+import type { PlayerId, Tile, TileValue, TileColor, OkeyInfo, TurnStateServer, LobbyPlayerPublic, HandEndState } from '@okey/shared';
 import { reduce } from '../src/game/reducer.js';
 
 function simpleAssert(cond: boolean, msg: string) {
@@ -29,6 +29,7 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
     currentPlayerId: 'p1',
     turnStep: 'mustDiscard',
     openedBy: { p1: 'none', p2: 'none', p3: 'none', p4: 'none' },
+    handHistory: [],
     deck: [tile('deck-1', 'blue', 5)],
     discardPiles: { p1: [], p2: [], p3: [], p4: [tile('dp4-1', 'yellow', 3)] },
     hands: {
@@ -121,6 +122,57 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
   const state = makeBaseTurnState();
   const next = reduce(state, { type: 'DISCARD', playerId: 'p1', tileId: 'h4' }) as TurnStateServer;
   simpleAssert((next.penalties ?? []).length === 0, 'no penalty for normal discard');
+})();
+
+// --- End conditions ---
+(function testWinEndsHand() {
+  const state = makeBaseTurnState({
+    hands: { p1: [tile('last','blue',6)], p2: [], p3: [], p4: [] },
+  });
+  const next = reduce(state, { type: 'DISCARD', playerId: 'p1', tileId: 'last' }) as HandEndState;
+  simpleAssert(next.phase === 'handEnd', 'win ends hand');
+  simpleAssert(next.result.reason === 'WIN', 'hand end reason WIN');
+  simpleAssert(next.result.winnerId === 'p1', 'winnerId set on WIN');
+})();
+
+(function testDeckEmptyEndsHand() {
+  const state = makeBaseTurnState({
+    deck: [],
+    hands: {
+      p1: [tile('a','blue',6), tile('b','yellow',7)],
+      p2: [tile('joker','red',2)],
+      p3: [],
+      p4: [],
+    },
+  });
+  const next = reduce(state, { type: 'DISCARD', playerId: 'p1', tileId: 'a' }) as HandEndState;
+  simpleAssert(next.phase === 'handEnd', 'deck empty ends hand');
+  simpleAssert(next.result.reason === 'DECK_EMPTY', 'hand end reason DECK_EMPTY');
+  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'JOKER_IN_HAND');
+  simpleAssert(!!pen, 'joker-in-hand penalty applied at deck empty');
+})();
+
+(function testAllPairsEndsHand() {
+  const hand: Tile[] = [
+    tile('p1a','red',1), tile('p1b','red',1),
+    tile('p2a','blue',2), tile('p2b','blue',2),
+    tile('p3a','black',3), tile('p3b','black',3),
+    tile('p4a','yellow',4), tile('p4b','yellow',4),
+    tile('p5a','red',5), tile('p5b','red',5),
+  ];
+  const state = makeBaseTurnState({
+    hands: { p1: hand, p2: [tile('joker','red',2)], p3: [], p4: [] },
+    openedBy: { p1: 'none', p2: 'pairs', p3: 'pairs', p4: 'pairs' },
+  });
+  const next = reduce(state, {
+    type: 'OPEN_MELD',
+    playerId: 'p1',
+    melds: [['p1a','p1b'], ['p2a','p2b'], ['p3a','p3b'], ['p4a','p4b'], ['p5a','p5b']],
+  }) as HandEndState;
+  simpleAssert(next.phase === 'handEnd', 'all pairs ends hand');
+  simpleAssert(next.result.reason === 'ALL_PAIRS', 'hand end reason ALL_PAIRS');
+  const pen = next.result.penalties.find((p) => p.playerId === 'p2' && p.reason === 'JOKER_IN_HAND');
+  simpleAssert(!!pen, 'joker-in-hand penalty applied at all pairs');
 })();
 
 // --- OPEN_MELD: valid opening ---

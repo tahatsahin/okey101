@@ -24,18 +24,18 @@ Last updated: 2026-03-02
 - (x) Expose opening mode in client UI.
 
 ## Phase 2: End Conditions & Scoring
-- ( ) Win on discard of last tile.
-- ( ) Deck empty (indicator only) ends hand.
-- ( ) All four players opened with pairs ends hand.
-- ( ) Apply joker-in-hand penalties at hand end.
-- ( ) Persist per-hand results in room state.
+- (x) Win on discard of last tile.
+- (x) Deck empty (indicator only) ends hand.
+- (x) All four players opened with pairs ends hand.
+- (x) Apply joker-in-hand penalties at hand end.
+- (x) Persist per-hand results in room state.
 - ( ) Dealer rotation and new deal flow.
 
 ## Phase 3: UX & Gameplay Loop
 - (x) Show opening mode and whether player has opened.
 - ( ) Table meld UX: show meld owner and resolved joker values.
 - ( ) Highlight legal layoffs and extendable tiles.
-- ( ) End-of-hand summary UI with scores and penalties.
+- (x) End-of-hand summary UI with scores and penalties.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

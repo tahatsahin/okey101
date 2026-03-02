@@ -18,6 +18,16 @@ export type TableMeldTile = Tile & {
   assigned?: { color: TileColor; value: TileValue };
 };
 
+export type Penalty = { playerId: PlayerId; points: number; reason?: string };
+
+export type HandEndReason = "WIN" | "DECK_EMPTY" | "ALL_PAIRS";
+
+export type HandResult = {
+  reason: HandEndReason;
+  winnerId?: PlayerId;
+  penalties: Penalty[];
+};
+
 export type TurnStateServer = {
   phase: "turn";
   roomId: RoomId;
@@ -25,6 +35,7 @@ export type TurnStateServer = {
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
+  handHistory: HandResult[];
 
   deck: Tile[];
 
@@ -34,10 +45,18 @@ export type TurnStateServer = {
   indicator: Tile;
   okey: OkeyInfo;
   tableMelds?: { meldId: string; playerId: PlayerId; tiles: TableMeldTile[] }[];
-  penalties?: { playerId: PlayerId; points: number; reason?: string }[];
+  penalties?: Penalty[];
 };
 
-export type GameStateServer = LobbyState | TurnStateServer;
+export type HandEndState = {
+  phase: "handEnd";
+  roomId: RoomId;
+  players: LobbyPlayerPublic[];
+  result: HandResult;
+  handHistory: HandResult[];
+};
+
+export type GameStateServer = LobbyState | TurnStateServer | HandEndState;
 
 export type TurnStateClient = {
   phase: "turn";
@@ -56,7 +75,7 @@ export type TurnStateClient = {
   indicator: Tile;
   okey: OkeyInfo;
   tableMelds: { meldId: string; playerId: PlayerId; tiles: TableMeldTile[] }[];
-  penalties: { playerId: PlayerId; points: number; reason?: string }[];
+  penalties: Penalty[];
 };
 
-export type GameStateClient = LobbyState | TurnStateClient;
+export type GameStateClient = LobbyState | TurnStateClient | HandEndState;

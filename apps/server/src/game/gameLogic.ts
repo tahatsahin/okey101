@@ -117,6 +117,7 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     // First player has 22 tiles — they skip drawing and go straight to discard
     turnStep: "mustDiscard",
     openedBy: Object.fromEntries(playerIds.map((id) => [id, "none"])),
+    handHistory: [],
 
     deck,
     discardPiles: Object.fromEntries(playerIds.map((id) => [id, []])),
@@ -131,7 +132,7 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
 }
 
 export function toClientView(state: GameStateServer, you: PlayerId): GameStateClient {
-  if (state.phase === "lobby") return state;
+  if (state.phase === "lobby" || state.phase === "handEnd") return state;
 
   const s = state;
   const yourHand = s.hands[you] ?? [];
