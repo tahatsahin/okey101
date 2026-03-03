@@ -43,12 +43,12 @@ function endRoundPenalties(state: TurnStateServer, winnerId?: PlayerId): Penalty
     const mode = state.openedBy?.[p.playerId] ?? "none";
     const hand = state.hands[p.playerId] ?? [];
     if (mode === "none") {
-      penalties.push({ playerId: p.playerId, points: 202, reason: "NO_OPEN" });
+      penalties.push({ playerId: p.playerId, points: state.options.penaltyNoOpen, reason: "NO_OPEN" });
       continue;
     }
     const sum = hand.reduce((acc, t) => acc + tilePenaltyValue(t, state.okey), 0);
     if (sum <= 0) continue;
-    const mult = mode === "pairs" ? 2 : 1;
+    const mult = mode === "pairs" ? state.options.pairsMultiplier : 1;
     penalties.push({
       playerId: p.playerId,
       points: sum * mult,
@@ -252,7 +252,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,
-            points: 101,
+            points: state.options.penaltyFailedOpening,
             reason: "FAILED_OPENING"
           });
           const notice =
@@ -394,7 +394,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,
-            points: 101,
+            points: state.options.penaltyFailedOpening,
             reason: "FAILED_OPENING"
           });
           const notice =
@@ -470,16 +470,16 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const penalties = (state.penalties ?? []).slice();
       const finishing = isFinishingDiscard(newHand);
 
-      // 1) Discarding a joker (okey tile) => +101
+      // 1) Discarding a joker (okey tile)
       if (isOkeyTile(tile, state.okey)) {
-        penalties.push({ playerId: action.playerId, points: 101, reason: "DISCARD_JOKER" });
+        penalties.push({ playerId: action.playerId, points: state.options.penaltyDiscardJoker, reason: "DISCARD_JOKER" });
       }
 
-      // 2) Discarding a tile that could extend any set/run on table => +101 (unless finishing)
+      // 2) Discarding a tile that could extend any set/run on table (unless finishing)
       if (!finishing) {
         const tableMelds = (state.tableMelds ?? []).map((m) => m.tiles);
         if (tableMelds.length > 0 && canExtendAnyMeld(tableMelds, tile, state.okey)) {
-          penalties.push({ playerId: action.playerId, points: 101, reason: "DISCARD_EXTENDABLE" });
+          penalties.push({ playerId: action.playerId, points: state.options.penaltyDiscardExtendable, reason: "DISCARD_EXTENDABLE" });
         }
       }
 

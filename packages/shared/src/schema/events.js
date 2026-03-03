@@ -38,7 +38,12 @@ const LobbyPlayerPublic = z.object({
 });
 const GameOptions = z.object({
     teamMode: z.boolean(),
-    increasingMeldLimit: z.boolean()
+    increasingMeldLimit: z.boolean(),
+    penaltyDiscardJoker: z.number().int().nonnegative(),
+    penaltyDiscardExtendable: z.number().int().nonnegative(),
+    penaltyFailedOpening: z.number().int().nonnegative(),
+    penaltyNoOpen: z.number().int().nonnegative(),
+    pairsMultiplier: z.number().int().positive()
 });
 const Penalty = z.object({
     playerId: z.string().min(1),
@@ -117,7 +122,15 @@ export const C2S = {
         seatIndex: z.number().int().min(0).max(3).optional(),
     }),
     roomReady: z.object({ ready: z.boolean() }),
-    roomSetOptions: z.object({ teamMode: z.boolean(), increasingMeldLimit: z.boolean() }),
+    roomSetOptions: z.object({
+        teamMode: z.boolean(),
+        increasingMeldLimit: z.boolean(),
+        penaltyDiscardJoker: z.number().int().nonnegative(),
+        penaltyDiscardExtendable: z.number().int().nonnegative(),
+        penaltyFailedOpening: z.number().int().nonnegative(),
+        penaltyNoOpen: z.number().int().nonnegative(),
+        pairsMultiplier: z.number().int().positive()
+    }),
     roomAddBot: z.object({}),
     gameStart: z.object({}),
     moveDraw: z.object({ source: z.enum(["deck", "prevDiscard"]) }),

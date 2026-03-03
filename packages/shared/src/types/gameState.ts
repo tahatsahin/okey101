@@ -12,6 +12,11 @@ export type LobbyPlayerPublic = {
 export type GameOptions = {
   teamMode: boolean;
   increasingMeldLimit: boolean;
+  penaltyDiscardJoker: number;
+  penaltyDiscardExtendable: number;
+  penaltyFailedOpening: number;
+  penaltyNoOpen: number;
+  pairsMultiplier: number;
 };
 
 export type LobbyState = {

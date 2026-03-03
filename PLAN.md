@@ -49,6 +49,7 @@ Last updated: 2026-03-03
 - (x) Increasing meld limit option with escalating opening threshold.
 - (x) Global notification when opening meld is under the limit.
 - (x) In-game score table overlay with close-on-click.
+- (x) Lobby settings modal for penalties and scoring options.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

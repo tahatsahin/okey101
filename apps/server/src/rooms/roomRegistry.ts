@@ -118,9 +118,30 @@ export class RoomRegistry {
       room = {
         roomId,
         players: [],
-        state: { phase: "lobby", roomId, players: [], options: { teamMode: false, increasingMeldLimit: false } },
+        state: {
+          phase: "lobby",
+          roomId,
+          players: [],
+          options: {
+            teamMode: false,
+            increasingMeldLimit: false,
+            penaltyDiscardJoker: 101,
+            penaltyDiscardExtendable: 101,
+            penaltyFailedOpening: 101,
+            penaltyNoOpen: 202,
+            pairsMultiplier: 2
+          }
+        },
         version: 0,
-        options: { teamMode: false, increasingMeldLimit: false },
+        options: {
+          teamMode: false,
+          increasingMeldLimit: false,
+          penaltyDiscardJoker: 101,
+          penaltyDiscardExtendable: 101,
+          penaltyFailedOpening: 101,
+          penaltyNoOpen: 202,
+          pairsMultiplier: 2
+        },
         tokenToPlayerId: new Map(),
         playerIdToToken: new Map()
       };

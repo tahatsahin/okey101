@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import "./App.css";
 import { socket } from "./socket.ts";
 import type { ServerGameStatePayload } from "./types.ts";
-import type { Tile, TableMeldTile } from "@okey/shared";
+import type { Tile, TableMeldTile, GameOptions } from "@okey/shared";
 import { findBestTileGrouping, validateMeldFromHand, validateLayoff, canExtendAnyMeld, C2S_EVENT, C2S_EXTRA_EVENT, S2C_EVENT } from "@okey/shared";
 
 type JoinAck =
@@ -135,6 +135,8 @@ export default function App() {
     const v = localStorage.getItem("okey101:showSortButtons");
     return v !== "false";
   });
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsDraft, setSettingsDraft] = useState<GameOptions | null>(null);
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -162,6 +164,22 @@ export default function App() {
     return s.currentPlayerId === playerId;
   }, [serverState, playerId]);
 
+  const gs = serverState?.state;
+  const defaultOptions: GameOptions = {
+    teamMode: false,
+    increasingMeldLimit: false,
+    penaltyDiscardJoker: 101,
+    penaltyDiscardExtendable: 101,
+    penaltyFailedOpening: 101,
+    penaltyNoOpen: 202,
+    pairsMultiplier: 2
+  };
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    if (gs?.options) setSettingsDraft(gs.options);
+  }, [settingsOpen, gs?.options]);
+
   /* ── socket emitters ── */
   function join(seatIndex?: number) {
     const token = sessionStorage.getItem(tokenKey(roomId)) ?? undefined;
@@ -181,7 +199,7 @@ export default function App() {
       if (!a.ok) alert(a.error);
     });
   }
-  function setOptions(opts: { teamMode: boolean; increasingMeldLimit: boolean }) {
+  function setOptions(opts: GameOptions) {
     socket.emit(C2S_EVENT.roomSetOptions, opts, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
@@ -232,7 +250,7 @@ export default function App() {
     });
   }
 
-  const gs = serverState?.state;
+  const options = gs?.options ?? defaultOptions;
 
   /* ── Join screen ── */
   if (!joined) {
@@ -271,9 +289,11 @@ export default function App() {
 
   /* ── Lobby ── */
   if (!gs || gs.phase === "lobby") {
-    const teamMode = gs?.options?.teamMode ?? false;
-    const increasingMeldLimit = gs?.options?.increasingMeldLimit ?? false;
+    const teamMode = options.teamMode;
     const isHost = gs?.players?.[0]?.playerId === playerId;
+    const draft = settingsDraft ?? options;
+    const updateDraft = (partial: Partial<GameOptions>) =>
+      setSettingsDraft((prev) => ({ ...(prev ?? options), ...partial }));
     const seats = Array.from({ length: 4 }).map((_, idx) => {
       const player = gs?.players?.find((p) => p.seatIndex === idx) ?? null;
       return { idx, player };
@@ -381,28 +401,13 @@ export default function App() {
             />
             Show sort buttons
           </label>
-          <label className="lobby-toggle">
-            <input
-              type="checkbox"
-              checked={teamMode}
-              disabled={!isHost}
-              onChange={(e) => setOptions({ teamMode: e.target.checked, increasingMeldLimit })}
-            />
-            Team mode (2v2)
-          </label>
-          <label className="lobby-toggle">
-            <input
-              type="checkbox"
-              checked={increasingMeldLimit}
-              disabled={!isHost}
-              onChange={(e) => setOptions({ teamMode, increasingMeldLimit: e.target.checked })}
-            />
-            Increasing meld limit
-          </label>
           <div className="lobby-actions">
             <button onClick={() => setReady(true)}>Ready</button>
             <button onClick={() => setReady(false)} className="secondary">
               Not Ready
+            </button>
+            <button onClick={() => setSettingsOpen(true)} className="secondary">
+              Settings
             </button>
             <button onClick={startGame} className="primary">
               Start Game
@@ -413,6 +418,123 @@ export default function App() {
               </button>
             )}
           </div>
+          {settingsOpen && (
+            <div className="scores-overlay" onClick={() => setSettingsOpen(false)}>
+              <div className="scores-modal" onClick={(e) => e.stopPropagation()}>
+                <div className="scores-header">
+                  <h3>Lobby Settings</h3>
+                  <button className="secondary" onClick={() => setSettingsOpen(false)}>Close</button>
+                </div>
+                <div className="settings-grid">
+                  <label className="settings-row">
+                    <span>Team mode (2v2)</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.teamMode}
+                      disabled={!isHost}
+                      onChange={(e) => updateDraft({ teamMode: e.target.checked })}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Increasing meld limit</span>
+                    <input
+                      type="checkbox"
+                      checked={draft.increasingMeldLimit}
+                      disabled={!isHost}
+                      onChange={(e) => updateDraft({ increasingMeldLimit: e.target.checked })}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Penalty: discard joker</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.penaltyDiscardJoker}
+                      disabled={!isHost}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        updateDraft({ penaltyDiscardJoker: v });
+                      }}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Penalty: discard extendable</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.penaltyDiscardExtendable}
+                      disabled={!isHost}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        updateDraft({ penaltyDiscardExtendable: v });
+                      }}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Penalty: failed opening</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.penaltyFailedOpening}
+                      disabled={!isHost}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        updateDraft({ penaltyFailedOpening: v });
+                      }}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Penalty: no open</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={draft.penaltyNoOpen}
+                      disabled={!isHost}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        updateDraft({ penaltyNoOpen: v });
+                      }}
+                    />
+                  </label>
+                  <label className="settings-row">
+                    <span>Pairs multiplier</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={draft.pairsMultiplier}
+                      disabled={!isHost}
+                      onChange={(e) => {
+                        const v = Number(e.target.value);
+                        if (!Number.isFinite(v)) return;
+                        updateDraft({ pairsMultiplier: v });
+                      }}
+                    />
+                  </label>
+                </div>
+                <div className="settings-actions">
+                  <button
+                    className="primary"
+                    disabled={!isHost}
+                    onClick={() => {
+                      setOptions(draft);
+                      setSettingsOpen(false);
+                    }}
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
