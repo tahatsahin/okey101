@@ -23,7 +23,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 if (process.env.NODE_ENV === "production") {
     const clientDist = path.join(__dirname, "../../web/dist");
     app.use(express.static(clientDist));
-    app.get("*", (_req, res) => {
+    app.get(/.*/, (_req, res) => {
         res.sendFile(path.join(clientDist, "index.html"));
     });
 }
