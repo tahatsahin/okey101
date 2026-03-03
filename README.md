@@ -141,6 +141,10 @@ Tests cover:
 - Reducer transitions (draw, discard, open, layoff, reorder, penalties)
 - Integration (full 4-player multi-turn game flow)
 
+## Deployment
+
+See [DEPLOYMENT.md](/home/tahatsahin/github/tahatsahin/okey101/DEPLOYMENT.md).
+
 ## License
 
 ISC
