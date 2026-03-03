@@ -22,158 +22,29 @@ docker compose version
 
 ## 2. Project Files
 
-Create the following files in the project root.
+These files are already included in the repo:
 
-### `Dockerfile`
+- `Dockerfile`
+- `docker-compose.yml`
+- `nginx.conf`
+- `.dockerignore`
+- `.env.example`
 
-```dockerfile
-# ── Stage 1: Build the frontend ──
-FROM node:20-alpine AS build
+Update `nginx.conf` to your real domain and create a `.env` file from `.env.example`:
 
-WORKDIR /app
-
-COPY package.json package-lock.json tsconfig.json ./
-COPY packages/shared/package.json packages/shared/
-COPY apps/server/package.json apps/server/
-COPY apps/web/package.json apps/web/
-
-RUN npm ci
-
-COPY packages/ packages/
-COPY apps/ apps/
-
-ARG VITE_SERVER_URL
-ENV VITE_SERVER_URL=${VITE_SERVER_URL}
-RUN npm -w apps/web run build
-
-# ── Stage 2: Production server ──
-FROM node:20-alpine AS production
-
-WORKDIR /app
-
-COPY package.json package-lock.json tsconfig.json ./
-COPY packages/shared/package.json packages/shared/
-COPY apps/server/package.json apps/server/
-
-RUN npm ci --omit=dev
-
-COPY packages/shared/ packages/shared/
-COPY apps/server/src/ apps/server/src/
-COPY --from=build /app/apps/web/dist /app/apps/web/dist
-
-ENV NODE_ENV=production
-ENV PORT=3001
-
-EXPOSE 3001
-
-CMD ["npx", "-w", "apps/server", "tsx", "src/index.ts"]
+```bash
+cp .env.example .env
+# edit .env to set VITE_SERVER_URL
 ```
 
-### `docker-compose.yml`
+## 2a. DNS (Route 53)
 
-```yaml
-services:
-  app:
-    build:
-      context: .
-      args:
-        VITE_SERVER_URL: "https://okey.yourdomain.com"
-    ports:
-      - "3001:3001"
-    restart: unless-stopped
-    environment:
-      - NODE_ENV=production
-      - PORT=3001
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
-      interval: 30s
-      timeout: 5s
-      retries: 3
+Create an A record for your subdomain to point at the droplet IP:
 
-  nginx:
-    image: nginx:alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
-      - certbot-etc:/etc/letsencrypt:ro
-      - certbot-var:/var/lib/letsencrypt
-    depends_on:
-      - app
-    restart: unless-stopped
-
-  certbot:
-    image: certbot/certbot
-    volumes:
-      - certbot-etc:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do sleep 12h & wait $${!}; certbot renew; done'"
-
-volumes:
-  certbot-etc:
-  certbot-var:
-```
-
-### `nginx.conf`
-
-```nginx
-upstream app {
-    server app:3001;
-}
-
-server {
-    listen 80;
-    server_name okey.yourdomain.com;
-
-    location /.well-known/acme-challenge/ {
-        root /var/lib/letsencrypt;
-    }
-
-    location / {
-        return 301 https://$host$request_uri;
-    }
-}
-
-server {
-    listen 443 ssl;
-    server_name okey.yourdomain.com;
-
-    ssl_certificate /etc/letsencrypt/live/okey.yourdomain.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/okey.yourdomain.com/privkey.pem;
-
-    location / {
-        proxy_pass http://app;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-
-    location /socket.io/ {
-        proxy_pass http://app;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 86400;
-    }
-}
-```
-
-### `.dockerignore`
-
-```
-node_modules
-.git
-*.md
-.agent
-apps/web/dist
-apps/server/dev
-```
+- Record name: `okey.tahatsahin.com`
+- Type: `A`
+- Value: your droplet IPv4 address
+- TTL: default is fine
 
 ## 3. Deploy
 
@@ -199,7 +70,7 @@ Before enabling HTTPS in nginx, temporarily modify `nginx.conf` to serve HTTP on
 ```nginx
 server {
     listen 80;
-    server_name okey.yourdomain.com;
+    server_name okey.tahatsahin.com;
 
     location /.well-known/acme-challenge/ {
         root /var/lib/letsencrypt;
@@ -227,7 +98,7 @@ docker compose up -d app nginx
 
 docker compose run --rm certbot certonly \
   --webroot -w /var/lib/letsencrypt \
-  -d okey.yourdomain.com \
+  -d okey.tahatsahin.com \
   --email you@email.com --agree-tos --no-eff-email
 
 docker compose restart nginx
@@ -303,3 +174,30 @@ ufw enable
 - This project uses in-memory state — restarting the container loses all active games.
 - On a 1GB VPS, Node.js + nginx should use ~100–200MB total.
 - No database required.
+
+## CI/CD (GitHub Actions)
+
+The repo includes a GitHub Actions workflow that:
+
+- Runs server tests and web build on every push to `main`.
+- Deploys to your DigitalOcean VPS via SSH and runs `docker compose up -d --build`.
+
+### Required GitHub Secrets
+
+- `DO_HOST` — VPS IP or hostname
+- `DO_USER` — SSH user (e.g., `root` or `ubuntu`)
+- `DO_SSH_KEY` — private key for SSH access
+- `DO_PORT` — optional SSH port (default 22)
+- `DO_APP_PATH` — server path where repo lives (e.g., `/opt/okey101`)
+- `VITE_SERVER_URL` — public URL for Socket.IO (e.g., `https://okey.tahatsahin.com`)
+
+### Server Setup for CI/CD
+
+```bash
+cd /opt
+git clone https://github.com/tahatsahin/okey101.git
+cd okey101
+cp .env.example .env
+```
+
+After this, each push to `main` auto-deploys.

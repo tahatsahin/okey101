@@ -1,0 +1,49 @@
+name: CI/CD
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+      - run: npm ci
+      - run: npm -w apps/server test
+      - run: npm -w apps/web run build
+        env:
+          VITE_SERVER_URL: "http://localhost:3001"
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DO_SSH_KEY }}
+      - name: Deploy to VPS
+        env:
+          DO_HOST: ${{ secrets.DO_HOST }}
+          DO_USER: ${{ secrets.DO_USER }}
+          DO_PORT: ${{ secrets.DO_PORT }}
+          DO_APP_PATH: ${{ secrets.DO_APP_PATH }}
+          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+        run: |
+          PORT_ARG=""
+          if [ -n "$DO_PORT" ]; then
+            PORT_ARG="-p $DO_PORT"
+          fi
+          ssh $PORT_ARG -o StrictHostKeyChecking=no $DO_USER@$DO_HOST \
+            "set -e; cd \"$DO_APP_PATH\"; git fetch --all; git reset --hard origin/main; VITE_SERVER_URL=\"$VITE_SERVER_URL\" docker compose up -d --build"
