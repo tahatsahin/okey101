@@ -174,6 +174,11 @@ export default function App() {
       if (!a.ok) alert(a.error);
     });
   }
+  function setOptions(teamMode: boolean) {
+    socket.emit(C2S_EVENT.roomSetOptions, { teamMode }, (a: SimpleAck) => {
+      if (!a.ok) alert(a.error);
+    });
+  }
   function startGame() {
     socket.emit(C2S_EVENT.gameStart, {}, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
@@ -249,12 +254,16 @@ export default function App() {
 
   /* ── Lobby ── */
   if (!gs || gs.phase === "lobby") {
+    const teamMode = gs?.options?.teamMode ?? false;
+    const isHost = gs?.players?.[0]?.playerId === playerId;
     return (
       <div className="join-screen">
         <div className="lobby-card">
           <h2>Lobby — {roomId}</h2>
           <div className="lobby-players">
-            {(gs?.players ?? []).map((p) => (
+            {(gs?.players ?? []).map((p, idx) => {
+              const teamId = teamMode ? (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) : null;
+              return (
               <div
                 key={p.playerId}
                 className={`lobby-player ${p.ready ? "ready" : ""} ${p.playerId === playerId ? "you" : ""}`}
@@ -264,12 +273,14 @@ export default function App() {
                   {p.name}
                   {p.isBot ? " (bot)" : ""}
                   {p.playerId === playerId ? " (you)" : ""}
+                  {teamId ? ` — Team ${teamId}` : ""}
                 </span>
                 <span className={`ready-badge ${p.ready ? "on" : ""}`}>
                   {p.ready ? "✓" : "…"}
                 </span>
               </div>
-            ))}
+              );
+            })}
             {Array.from({ length: 4 - (gs?.players.length ?? 0) }).map((_, i) => (
               <div key={`empty-${i}`} className="lobby-player empty">
                 <div className="avatar-placeholder" />
@@ -288,6 +299,15 @@ export default function App() {
               }}
             />
             Show sort buttons
+          </label>
+          <label className="lobby-toggle">
+            <input
+              type="checkbox"
+              checked={teamMode}
+              disabled={!isHost}
+              onChange={(e) => setOptions(e.target.checked)}
+            />
+            Team mode (2v2)
           </label>
           <div className="lobby-actions">
             <button onClick={() => setReady(true)}>Ready</button>
@@ -309,6 +329,7 @@ export default function App() {
   }
 
   if (gs.phase === "handEnd") {
+    const teamMode = gs.options?.teamMode ?? false;
     const winner = gs.result.winnerId
       ? gs.players.find((p) => p.playerId === gs.result.winnerId)?.name ?? gs.result.winnerId
       : null;
@@ -316,25 +337,71 @@ export default function App() {
     const maxRounds = gs.maxRounds ?? 11;
     const matchOver = gs.matchOver ?? roundNumber >= maxRounds;
 
+    const teamByPlayer = new Map<string, "A" | "B">();
+    if (teamMode) {
+      gs.players.forEach((p, idx) => {
+        teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
+      });
+    }
+
+    const teamIds: ("A" | "B")[] = ["A", "B"];
+    const teamLabel = (id: "A" | "B") => {
+      const names = gs.players
+        .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
+        .map((p) => p.name)
+        .join(" & ");
+      return names ? `Team ${id} (${names})` : `Team ${id}`;
+    };
+
     const roundScores = gs.handHistory.map((res) => {
-      const totals = new Map<string, number>();
-      for (const p of gs.players) totals.set(p.playerId, 0);
+      if (!teamMode) {
+        const totals = new Map<string, number>();
+        for (const p of gs.players) totals.set(p.playerId, 0);
+        for (const pen of res.penalties) {
+          totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+        }
+        return totals;
+      }
+      const totals = new Map<"A" | "B", number>([
+        ["A", 0],
+        ["B", 0],
+      ]);
       for (const pen of res.penalties) {
-        totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+        const team = teamByPlayer.get(pen.playerId);
+        if (!team) continue;
+        totals.set(team, (totals.get(team) ?? 0) + pen.points);
       }
       return totals;
     });
+
     const totalsByPlayer = new Map<string, number>();
-    for (const p of gs.players) totalsByPlayer.set(p.playerId, 0);
-    for (const round of roundScores) {
-      for (const p of gs.players) {
-        totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
+    const totalsByTeam = new Map<"A" | "B", number>([
+      ["A", 0],
+      ["B", 0],
+    ]);
+    if (!teamMode) {
+      for (const p of gs.players) totalsByPlayer.set(p.playerId, 0);
+      for (const round of roundScores as Map<string, number>[]) {
+        for (const p of gs.players) {
+          totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
+        }
+      }
+    } else {
+      for (const round of roundScores as Map<"A" | "B", number>[]) {
+        for (const t of teamIds) {
+          totalsByTeam.set(t, (totalsByTeam.get(t) ?? 0) + (round.get(t) ?? 0));
+        }
       }
     }
     let winners: string[] = [];
     if (matchOver) {
-      const min = Math.min(...gs.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0));
-      winners = gs.players.filter((p) => (totalsByPlayer.get(p.playerId) ?? 0) === min).map((p) => p.name);
+      if (!teamMode) {
+        const min = Math.min(...gs.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0));
+        winners = gs.players.filter((p) => (totalsByPlayer.get(p.playerId) ?? 0) === min).map((p) => p.name);
+      } else {
+        const min = Math.min(...teamIds.map((t) => totalsByTeam.get(t) ?? 0));
+        winners = teamIds.filter((t) => (totalsByTeam.get(t) ?? 0) === min).map((t) => teamLabel(t));
+      }
     }
     return (
       <div className="join-screen">
@@ -353,28 +420,30 @@ export default function App() {
           <div className="round-scores">
             <div className="score-row score-header">
               <div>Round</div>
-              {gs.players.map((p) => (
-                <div key={p.playerId}>{p.name}</div>
-              ))}
+              {!teamMode
+                ? gs.players.map((p) => <div key={p.playerId}>{p.name}</div>)
+                : teamIds.map((t) => <div key={t}>{teamLabel(t)}</div>)}
             </div>
             {roundScores.map((round, i) => (
               <div key={`round-${i}`} className="score-row">
                 <div>#{i + 1}</div>
-                {gs.players.map((p) => (
-                  <div key={p.playerId}>{round.get(p.playerId) ?? 0}</div>
-                ))}
+                {!teamMode
+                  ? gs.players.map((p) => <div key={p.playerId}>{(round as Map<string, number>).get(p.playerId) ?? 0}</div>)
+                  : teamIds.map((t) => <div key={t}>{(round as Map<"A" | "B", number>).get(t) ?? 0}</div>)}
               </div>
             ))}
             <div className="score-row score-total">
               <div>Total</div>
-              {gs.players.map((p) => (
-                <div key={p.playerId}>{totalsByPlayer.get(p.playerId) ?? 0}</div>
-              ))}
+              {!teamMode
+                ? gs.players.map((p) => <div key={p.playerId}>{totalsByPlayer.get(p.playerId) ?? 0}</div>)
+                : teamIds.map((t) => <div key={t}>{totalsByTeam.get(t) ?? 0}</div>)}
             </div>
           </div>
 
           <div className="lobby-players">
-            {gs.players.map((p) => (
+            {gs.players.map((p, idx) => {
+              const teamId = teamMode ? (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) : null;
+              return (
               <div
                 key={p.playerId}
                 className={`lobby-player ${p.ready ? "ready" : ""} ${p.playerId === playerId ? "you" : ""}`}
@@ -384,12 +453,14 @@ export default function App() {
                   {p.name}
                   {p.isBot ? " (bot)" : ""}
                   {p.playerId === playerId ? " (you)" : ""}
+                  {teamId ? ` — Team ${teamId}` : ""}
                 </span>
                 <span className={`ready-badge ${p.ready ? "on" : ""}`}>
                   {p.ready ? "✓" : "…"}
                 </span>
               </div>
-            ))}
+              );
+            })}
           </div>
           <div className="lobby-actions">
             <button onClick={() => setReady(true)}>Ready</button>
@@ -472,6 +543,14 @@ function GameBoard({
   const seats = seatOrder(state.players, playerId);
   const [bottomId, rightId, topId, leftId] = seats;
   const playerMap = Object.fromEntries(state.players.map((p) => [p.playerId, p]));
+  const teamMode = state.options?.teamMode ?? false;
+  const teamByPlayer = useMemo(() => {
+    const map = new Map<string, "A" | "B">();
+    state.players.forEach((p, idx) => {
+      map.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
+    });
+    return map;
+  }, [state.players]);
 
   const order = state.players.map((p) => p.playerId);
   const curIdx = order.indexOf(state.currentPlayerId);
@@ -904,6 +983,7 @@ function GameBoard({
     if (!p) return null;
     const count = state.otherHandCounts[pId] ?? 0;
     const isActive = state.currentPlayerId === pId;
+    const teamId = teamMode ? teamByPlayer.get(pId) : null;
     return (
       <div className={`seat-panel seat-${position} ${isActive ? "active" : ""}`}>
         <div className="seat-avatar">
@@ -911,6 +991,7 @@ function GameBoard({
           {isActive && <div className="turn-indicator" />}
         </div>
         <div className="seat-name">{p.name}</div>
+        {teamId && <div className="seat-team">Team {teamId}</div>}
         <div className="seat-count">{count}</div>
         <div className="seat-tiles">
           {Array.from({ length: Math.min(count, 8) }).map((_, i) => (
@@ -1213,14 +1294,43 @@ function GameBoard({
       {penalties.length > 0 && (
         <div className="penalty-toast">
           {(() => {
-            const totals = new Map<string, number>();
-            for (const p of state.players) totals.set(p.playerId, 0);
-            for (const pen of penalties) {
-              totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+            const teamMode = state.options?.teamMode ?? false;
+            if (!teamMode) {
+              const totals = new Map<string, number>();
+              for (const p of state.players) totals.set(p.playerId, 0);
+              for (const pen of penalties) {
+                totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+              }
+              return state.players.map((p) => (
+                <div key={p.playerId} className="penalty-item">
+                  {p.name}: {totals.get(p.playerId) ?? 0} pts
+                </div>
+              ));
             }
-            return state.players.map((p) => (
-              <div key={p.playerId} className="penalty-item">
-                {p.name}: {totals.get(p.playerId) ?? 0} pts
+
+            const teamByPlayer = new Map<string, "A" | "B">();
+            state.players.forEach((p, idx) => {
+              teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
+            });
+            const totals = new Map<"A" | "B", number>([
+              ["A", 0],
+              ["B", 0],
+            ]);
+            for (const pen of penalties) {
+              const team = teamByPlayer.get(pen.playerId);
+              if (!team) continue;
+              totals.set(team, (totals.get(team) ?? 0) + pen.points);
+            }
+            const teamLabel = (id: "A" | "B") => {
+              const names = state.players
+                .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
+                .map((p) => p.name)
+                .join(" & ");
+              return names ? `Team ${id} (${names})` : `Team ${id}`;
+            };
+            return (["A", "B"] as const).map((t) => (
+              <div key={t} className="penalty-item">
+                {teamLabel(t)}: {totals.get(t) ?? 0} pts
               </div>
             ));
           })()}

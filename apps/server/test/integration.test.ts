@@ -17,7 +17,7 @@ const players: LobbyPlayerPublic[] = [
   { playerId: 'p4', name: 'Dave', ready: false },
 ];
 
-let state: GameStateServer = { phase: 'lobby', roomId: 'int-test', players };
+let state: GameStateServer = { phase: 'lobby', roomId: 'int-test', players, options: { teamMode: false } };
 
 // Ready up all players
 for (const p of players) {

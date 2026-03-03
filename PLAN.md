@@ -44,6 +44,7 @@ Last updated: 2026-03-03
 - (x) Discard-take flow: take discard into must-meld state with return tile button.
 - (x) Grouping UI: hide grouped tiles, show group totals and pair counts, restore on clear/return/discard.
 - (x) Draw drop positioning: place drawn tile at drop location when empty.
+- (x) Team mode (2v2): lobby toggle, opposite seating, team-based scoring UI.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

@@ -1,16 +1,22 @@
-import type { PlayerId, RoomId, Tile, OkeyInfo, TileColor, TileValue } from "./ids.js";
+import type { PlayerId, RoomId, Tile, OkeyInfo, TileColor, TileValue, TeamId } from "./ids.js";
 
 export type LobbyPlayerPublic = {
   playerId: PlayerId;
   name: string;
   ready: boolean;
   isBot?: boolean;
+  teamId?: TeamId;
+};
+
+export type GameOptions = {
+  teamMode: boolean;
 };
 
 export type LobbyState = {
   phase: "lobby";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
+  options: GameOptions;
 };
 
 export type TurnStep = "mustDraw" | "mustDiscard" | "mustMeldDiscard";
@@ -33,6 +39,7 @@ export type TurnStateServer = {
   phase: "turn";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
+  options: GameOptions;
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
@@ -55,6 +62,7 @@ export type HandEndState = {
   phase: "handEnd";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
+  options: GameOptions;
   result: HandResult;
   handHistory: HandResult[];
   dealerIndex: number;
@@ -69,6 +77,7 @@ export type TurnStateClient = {
   phase: "turn";
   roomId: RoomId;
   players: LobbyPlayerPublic[];
+  options: GameOptions;
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };

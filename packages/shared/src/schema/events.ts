@@ -41,7 +41,12 @@ const LobbyPlayerPublic = z.object({
   playerId: z.string().min(1),
   name: z.string().min(1),
   ready: z.boolean(),
-  isBot: z.boolean().optional()
+  isBot: z.boolean().optional(),
+  teamId: z.enum(["A", "B"]).optional()
+});
+
+const GameOptions = z.object({
+  teamMode: z.boolean()
 });
 
 const Penalty = z.object({
@@ -59,13 +64,15 @@ const HandResult = z.object({
 const LobbyState = z.object({
   phase: z.literal("lobby"),
   roomId: z.string().min(1),
-  players: z.array(LobbyPlayerPublic)
+  players: z.array(LobbyPlayerPublic),
+  options: GameOptions
 });
 
 const TurnStateClient = z.object({
   phase: z.literal("turn"),
   roomId: z.string().min(1),
   players: z.array(LobbyPlayerPublic),
+  options: GameOptions,
   currentPlayerId: z.string().min(1),
   turnStep: z.enum(["mustDraw", "mustDiscard", "mustMeldDiscard"]),
   takenDiscard: z
@@ -96,6 +103,7 @@ const HandEndState = z.object({
   phase: z.literal("handEnd"),
   roomId: z.string().min(1),
   players: z.array(LobbyPlayerPublic),
+  options: GameOptions,
   result: HandResult,
   handHistory: z.array(HandResult),
   dealerIndex: z.number().int(),
@@ -114,6 +122,7 @@ export const C2S = {
     token: z.string().min(10).optional(),
   }),
   roomReady: z.object({ ready: z.boolean() }),
+  roomSetOptions: z.object({ teamMode: z.boolean() }),
   roomAddBot: z.object({}),
   gameStart: z.object({}),
   moveDraw: z.object({ source: z.enum(["deck", "prevDiscard"]) }),

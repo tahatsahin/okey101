@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import type { PlayerId, RoomId, GameStateServer, TileId, TurnStateServer } from "@okey/shared";
+import type { PlayerId, RoomId, GameStateServer, TileId, TurnStateServer, GameOptions } from "@okey/shared";
 import type { LobbyPlayer } from "./roomTypes.js";
 import { reduce } from "../game/reducer.js";
 
@@ -8,6 +8,7 @@ type RoomRuntime = {
   players: LobbyPlayer[];
   state: GameStateServer;
   version: number;
+  options: GameOptions;
 
   // reconnect
   tokenToPlayerId: Map<string, PlayerId>;
@@ -32,6 +33,7 @@ export class RoomRegistry {
   }
 
   private syncLobbyState(room: RoomRuntime) {
+    this.assignTeams(room);
     room.state = {
       phase: "lobby",
       roomId: room.roomId,
@@ -39,10 +41,22 @@ export class RoomRegistry {
         playerId: p.playerId,
         name: p.name,
         ready: p.ready,
-        isBot: p.isBot
-      }))
+        isBot: p.isBot,
+        teamId: p.teamId
+      })),
+      options: room.options
     };
     room.version++;
+  }
+
+  private assignTeams(room: RoomRuntime) {
+    if (!room.options.teamMode) {
+      for (const p of room.players) delete p.teamId;
+      return;
+    }
+    for (let i = 0; i < room.players.length; i++) {
+      room.players[i]!.teamId = i % 2 === 0 ? "A" : "B";
+    }
   }
 
   private scheduleBotTurn(roomId: RoomId) {
@@ -102,8 +116,9 @@ export class RoomRegistry {
       room = {
         roomId,
         players: [],
-        state: { phase: "lobby", roomId, players: [] },
+        state: { phase: "lobby", roomId, players: [], options: { teamMode: false } },
         version: 0,
+        options: { teamMode: false },
         tokenToPlayerId: new Map(),
         playerIdToToken: new Map()
       };
@@ -172,6 +187,22 @@ export class RoomRegistry {
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
     }
+  }
+
+  setOptions(socketId: string, options: GameOptions): SimpleResult {
+    const meta = this.socketToMeta.get(socketId);
+    if (!meta) return { ok: false, error: "NOT_IN_ROOM" };
+    const room = this.rooms.get(meta.roomId);
+    if (!room) return { ok: false, error: "NOT_IN_ROOM" };
+    if (room.state.phase !== "lobby") return { ok: false, error: "BAD_PHASE" };
+
+    const hostId = room.players[0]?.playerId;
+    if (!hostId) return { ok: false, error: "NEED_4_PLAYERS" };
+    if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
+
+    room.options = { ...room.options, ...options };
+    this.syncLobbyState(room);
+    return { ok: true };
   }
 
   startGame(socketId: string): SimpleResult {

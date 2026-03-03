@@ -113,6 +113,7 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     phase: "turn",
     roomId: prev.roomId,
     players: prev.players,
+    options: prev.options,
 
     currentPlayerId,
     // First player has 22 tiles — they skip drawing and go straight to discard
@@ -149,6 +150,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
     phase: "turn",
     roomId: s.roomId,
     players: s.players,
+    options: s.options,
 
     currentPlayerId: s.currentPlayerId,
     turnStep: s.turnStep,

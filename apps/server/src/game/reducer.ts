@@ -20,9 +20,26 @@ function tilePenaltyValue(tile: Tile, okey: { color: string; value: number }): n
   return (tile as any).value ?? 0;
 }
 
-function endRoundPenalties(state: TurnStateServer): Penalty[] {
+function endRoundPenalties(state: TurnStateServer, winnerId?: PlayerId): Penalty[] {
+  let winnerTeam: "A" | "B" | null = null;
+  if (
+    state.options?.teamMode &&
+    winnerId &&
+    (state.hands[winnerId]?.length ?? 0) === 0
+  ) {
+    const winner = state.players.find((p) => p.playerId === winnerId);
+    if (winner) {
+      const idx = state.players.indexOf(winner);
+      winnerTeam = (winner.teamId ?? (idx % 2 === 0 ? "A" : "B")) as "A" | "B";
+    }
+  }
   const penalties: Penalty[] = [];
   for (const p of state.players) {
+    if (winnerTeam) {
+      const idx = state.players.indexOf(p);
+      const teamId = (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) as "A" | "B";
+      if (teamId === winnerTeam) continue;
+    }
     const mode = state.openedBy?.[p.playerId] ?? "none";
     const hand = state.hands[p.playerId] ?? [];
     if (mode === "none") {
@@ -42,9 +59,10 @@ function endRoundPenalties(state: TurnStateServer): Penalty[] {
 }
 
 function endHand(state: TurnStateServer, result: HandResult): HandEndState {
+  const winnerId = result.reason === "WIN" ? result.winnerId : undefined;
   const finalResult: HandResult = {
     ...result,
-    penalties: [...(result.penalties ?? []), ...endRoundPenalties(state)]
+    penalties: [...(result.penalties ?? []), ...endRoundPenalties(state, winnerId)]
   };
   const handHistory = [...(state.handHistory ?? []), finalResult];
   const roundNumber = handHistory.length;
@@ -53,6 +71,7 @@ function endHand(state: TurnStateServer, result: HandResult): HandEndState {
     phase: "handEnd",
     roomId: state.roomId,
     players: state.players.map((p) => ({ ...p, ready: p.isBot ? true : false })),
+    options: state.options,
     result: finalResult,
     handHistory,
     dealerIndex: state.dealerIndex,
@@ -110,7 +129,8 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
           return {
             phase: "lobby",
             roomId: state.roomId,
-            players: players.map((p) => ({ ...p, ready: false }))
+            players: players.map((p) => ({ ...p, ready: false })),
+            options: state.options
           };
         }
 

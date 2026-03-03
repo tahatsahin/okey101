@@ -1,6 +1,8 @@
 export type RoomId = string;
 export type PlayerId = string;
 
+export type TeamId = "A" | "B";
+
 export type TileColor = "red" | "black" | "blue" | "yellow";
 export type TileKind = "normal" | "fakeJoker";
 

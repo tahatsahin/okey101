@@ -59,6 +59,20 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
+    socket.on(C2S_EVENT.roomSetOptions, (payload, ack) => {
+      const parsed = C2S.roomSetOptions.safeParse(payload);
+      if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
+
+      const meta = roomRegistry.getPlayerMeta(socket.id);
+      if (!meta) return ack?.({ ok: false, error: "NOT_IN_ROOM" });
+
+      const res = roomRegistry.setOptions(socket.id, parsed.data);
+      if (!res.ok) return ack?.(res);
+
+      emitGameStateToRoom(meta.roomId);
+      ack?.({ ok: true });
+    });
+
     socket.on(C2S_EVENT.roomAddBot, (_payload, ack) => {
       const parsed = C2S.roomAddBot.safeParse(_payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });

@@ -26,6 +26,7 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
     phase: 'turn',
     roomId: 'test-room',
     players,
+    options: { teamMode: false },
     currentPlayerId: 'p1',
     turnStep: 'mustDiscard',
     openedBy: { p1: 'none', p2: 'none', p3: 'none', p4: 'none' },
