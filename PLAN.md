@@ -48,6 +48,7 @@ Last updated: 2026-03-03
 - (x) Lobby seat selection: four slots with seat-specific join and team grouping.
 - (x) Increasing meld limit option with escalating opening threshold.
 - (x) Global notification when opening meld is under the limit.
+- (x) In-game score table overlay with close-on-click.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

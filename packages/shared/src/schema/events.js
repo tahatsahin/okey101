@@ -72,6 +72,7 @@ const TurnStateClient = z.object({
     openedBy: z.record(z.string().min(1), z.enum(["none", "runsSets", "pairs"])),
     openingLimit: z.number().int().nonnegative(),
     notice: z.lazy(() => TurnNotice).optional(),
+    handHistory: z.array(HandResult),
     dealerIndex: z.number().int(),
     deckCount: z.number().int().nonnegative(),
     discardPiles: z.record(z.string().min(1), z.array(Tile)),

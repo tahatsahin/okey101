@@ -88,6 +88,7 @@ export type TurnStateClient = {
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
   openingLimit: number;
   notice?: TurnNotice;
+  handHistory: HandResult[];
   dealerIndex: number;
 
   deckCount: number;

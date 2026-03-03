@@ -617,6 +617,7 @@ function GameBoard({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [meldGroups, setMeldGroups] = useState<string[][]>([]);
   const [layoffTargetId, setLayoffTargetId] = useState<string | null>(null);
+  const [showScores, setShowScores] = useState(false);
   const dragState = useRef<{
     type: "hand" | "deck" | "discard";
     tileId?: string;
@@ -704,6 +705,75 @@ function GameBoard({
     ro.observe(el);
     return () => ro.disconnect();
   }, []);
+
+  const scoreTable = useMemo(() => {
+    const history = state.handHistory ?? [];
+    const teamMode = state.options.teamMode;
+    if (history.length === 0) return null;
+    if (!teamMode) {
+      const roundScores = history.map((res) => {
+        const totals = new Map<string, number>();
+        for (const p of state.players) totals.set(p.playerId, 0);
+        for (const pen of res.penalties) {
+          totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+        }
+        return totals;
+      });
+      const totalsByPlayer = new Map<string, number>();
+      for (const p of state.players) totalsByPlayer.set(p.playerId, 0);
+      for (const round of roundScores) {
+        for (const p of state.players) {
+          totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
+        }
+      }
+      return {
+        headers: state.players.map((p) => p.name),
+        rows: roundScores.map((round) => state.players.map((p) => round.get(p.playerId) ?? 0)),
+        totals: state.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0),
+        teamMode: false
+      };
+    }
+
+    const teamByPlayer = new Map<string, "A" | "B">();
+    state.players.forEach((p, idx) => {
+      teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
+    });
+    const teamIds: ("A" | "B")[] = ["A", "B"];
+    const teamLabel = (id: "A" | "B") => {
+      const names = state.players
+        .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
+        .map((p) => p.name)
+        .join(" & ");
+      return names ? `Team ${id} (${names})` : `Team ${id}`;
+    };
+    const roundScores = history.map((res) => {
+      const totals = new Map<"A" | "B", number>([
+        ["A", 0],
+        ["B", 0],
+      ]);
+      for (const pen of res.penalties) {
+        const team = teamByPlayer.get(pen.playerId);
+        if (!team) continue;
+        totals.set(team, (totals.get(team) ?? 0) + pen.points);
+      }
+      return totals;
+    });
+    const totalsByTeam = new Map<"A" | "B", number>([
+      ["A", 0],
+      ["B", 0],
+    ]);
+    for (const round of roundScores) {
+      for (const t of teamIds) {
+        totalsByTeam.set(t, (totalsByTeam.get(t) ?? 0) + (round.get(t) ?? 0));
+      }
+    }
+    return {
+      headers: teamIds.map((t) => teamLabel(t)),
+      rows: roundScores.map((round) => teamIds.map((t) => round.get(t) ?? 0)),
+      totals: teamIds.map((t) => totalsByTeam.get(t) ?? 0),
+      teamMode: true
+    };
+  }, [state.handHistory, state.options.teamMode, state.players]);
 
   function rectsOverlap(a: { x: number; y: number }, b: { x: number; y: number }) {
     return (
@@ -1110,6 +1180,9 @@ function GameBoard({
 
   return (
     <div className="game-table">
+      <button className="scores-button" onClick={() => setShowScores(true)}>
+        Scores
+      </button>
       {/* Top player */}
       <SeatPanel pId={topId} position="top" />
 
@@ -1450,6 +1523,42 @@ function GameBoard({
       {noticeMessage && (
         <div className="notice-toast">
           {noticeMessage}
+        </div>
+      )}
+      {showScores && (
+        <div className="scores-overlay" onClick={() => setShowScores(false)}>
+          <div className="scores-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="scores-header">
+              <h3>Scores</h3>
+              <button className="secondary" onClick={() => setShowScores(false)}>Close</button>
+            </div>
+            {scoreTable ? (
+              <div className={`round-scores ${scoreTable.teamMode ? "team-mode" : ""}`}>
+                <div className="score-row score-header">
+                  <div>Round</div>
+                  {scoreTable.headers.map((h, idx) => (
+                    <div key={`hdr-${idx}`}>{h}</div>
+                  ))}
+                </div>
+                {scoreTable.rows.map((row, i) => (
+                  <div key={`round-${i}`} className="score-row">
+                    <div>#{i + 1}</div>
+                    {row.map((val, idx) => (
+                      <div key={`r-${i}-${idx}`}>{val}</div>
+                    ))}
+                  </div>
+                ))}
+                <div className="score-row score-total">
+                  <div>Total</div>
+                  {scoreTable.totals.map((val, idx) => (
+                    <div key={`tot-${idx}`}>{val}</div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="scores-empty">No completed rounds yet.</div>
+            )}
+          </div>
         </div>
       )}
     </div>

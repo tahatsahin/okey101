@@ -159,6 +159,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
     takenDiscard: s.takenDiscard,
     openedBy: s.openedBy,
     openingLimit: s.openingLimit,
+    handHistory: s.handHistory ?? [],
     dealerIndex: s.dealerIndex,
 
     deckCount: s.deck.length,
