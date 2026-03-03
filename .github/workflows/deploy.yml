@@ -39,10 +39,11 @@ jobs:
           DO_PORT: ${{ secrets.DO_PORT }}
           DO_APP_PATH: ${{ secrets.DO_APP_PATH }}
           VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
+          REPO_URL: https://github.com/${{ github.repository }}.git
         run: |
           PORT_ARG=""
           if [ -n "$DO_PORT" ]; then
             PORT_ARG="-p $DO_PORT"
           fi
           ssh $PORT_ARG -o StrictHostKeyChecking=no $DO_USER@$DO_HOST \
-            "set -e; cd \"$DO_APP_PATH\"; git fetch --all; git reset --hard origin/main; VITE_SERVER_URL=\"$VITE_SERVER_URL\" docker compose up -d --build"
+            "set -e; if [ ! -d \"$DO_APP_PATH/.git\" ]; then mkdir -p \"$DO_APP_PATH\"; git clone \"$REPO_URL\" \"$DO_APP_PATH\"; fi; cd \"$DO_APP_PATH\"; git fetch --all; git reset --hard origin/main; VITE_SERVER_URL=\"$VITE_SERVER_URL\" docker compose up -d --build"
