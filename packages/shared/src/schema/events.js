@@ -59,13 +59,15 @@ const LobbyState = z.object({
     phase: z.literal("lobby"),
     roomId: z.string().min(1),
     players: z.array(LobbyPlayerPublic),
-    options: GameOptions
+    options: GameOptions,
+    hostId: z.string().min(1).optional()
 });
 const TurnStateClient = z.object({
     phase: z.literal("turn"),
     roomId: z.string().min(1),
     players: z.array(LobbyPlayerPublic),
     options: GameOptions,
+    hostId: z.string().min(1).optional(),
     currentPlayerId: z.string().min(1),
     turnStep: z.enum(["mustDraw", "mustDiscard", "mustMeldDiscard"]),
     takenDiscard: z
@@ -97,6 +99,7 @@ const HandEndState = z.object({
     roomId: z.string().min(1),
     players: z.array(LobbyPlayerPublic),
     options: GameOptions,
+    hostId: z.string().min(1).optional(),
     result: HandResult,
     handHistory: z.array(HandResult),
     dealerIndex: z.number().int(),

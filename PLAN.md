@@ -51,6 +51,7 @@ Last updated: 2026-03-03
 - (x) In-game score table overlay with close-on-click.
 - (x) Lobby settings modal for penalties and scoring options.
 - (x) Allow removing a single grouped meld by clicking it in preview.
+- (x) Fix host permissions via stored hostId; auto-clear opening notice after 5s; de-dupe score table logic.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

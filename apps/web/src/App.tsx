@@ -36,6 +36,78 @@ function tileValueForSum(t: Tile, okey: { color: string; value: number }): numbe
   return t.value;
 }
 
+function buildScoreTable(
+  players: { playerId: string; name: string; teamId?: "A" | "B" }[],
+  history: { penalties: { playerId: string; points: number }[] }[],
+  teamMode: boolean
+) {
+  if (history.length === 0) return null;
+  if (!teamMode) {
+    const roundScores = history.map((res) => {
+      const totals = new Map<string, number>();
+      for (const p of players) totals.set(p.playerId, 0);
+      for (const pen of res.penalties) {
+        totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
+      }
+      return totals;
+    });
+    const totalsByPlayer = new Map<string, number>();
+    for (const p of players) totalsByPlayer.set(p.playerId, 0);
+    for (const round of roundScores) {
+      for (const p of players) {
+        totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
+      }
+    }
+    return {
+      headers: players.map((p) => p.name),
+      rows: roundScores.map((round) => players.map((p) => round.get(p.playerId) ?? 0)),
+      totals: players.map((p) => totalsByPlayer.get(p.playerId) ?? 0),
+      teamMode: false
+    };
+  }
+
+  const teamByPlayer = new Map<string, "A" | "B">();
+  players.forEach((p, idx) => {
+    teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
+  });
+  const teamIds: ("A" | "B")[] = ["A", "B"];
+  const teamLabel = (id: "A" | "B") => {
+    const names = players
+      .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
+      .map((p) => p.name)
+      .join(" & ");
+    return names ? `Team ${id} (${names})` : `Team ${id}`;
+  };
+  const roundScores = history.map((res) => {
+    const totals = new Map<"A" | "B", number>([
+      ["A", 0],
+      ["B", 0],
+    ]);
+    for (const pen of res.penalties) {
+      const team = teamByPlayer.get(pen.playerId);
+      if (!team) continue;
+      totals.set(team, (totals.get(team) ?? 0) + pen.points);
+    }
+    return totals;
+  });
+  const totalsByTeam = new Map<"A" | "B", number>([
+    ["A", 0],
+    ["B", 0],
+  ]);
+  for (const round of roundScores) {
+    for (const t of teamIds) {
+      totalsByTeam.set(t, (totalsByTeam.get(t) ?? 0) + (round.get(t) ?? 0));
+    }
+  }
+  return {
+    headers: teamIds.map((t) => teamLabel(t)),
+    rows: roundScores.map((round) => teamIds.map((t) => round.get(t) ?? 0)),
+    totals: teamIds.map((t) => totalsByTeam.get(t) ?? 0),
+    teamMode: true,
+    teamLabel
+  };
+}
+
 function topOfPile(pile: Tile[] | undefined): Tile | null {
   if (!pile || pile.length === 0) return null;
   return pile[pile.length - 1] ?? null;
@@ -180,6 +252,12 @@ export default function App() {
     if (gs?.options) setSettingsDraft(gs.options);
   }, [settingsOpen, gs?.options]);
 
+  useEffect(() => {
+    if (!gs?.hostId) return;
+    if (gs.hostId === playerId) return;
+    setSettingsOpen(false);
+  }, [gs?.hostId, playerId]);
+
   /* ── socket emitters ── */
   function join(seatIndex?: number) {
     const token = sessionStorage.getItem(tokenKey(roomId)) ?? undefined;
@@ -290,7 +368,7 @@ export default function App() {
   /* ── Lobby ── */
   if (!gs || gs.phase === "lobby") {
     const teamMode = options.teamMode;
-    const isHost = gs?.players?.[0]?.playerId === playerId;
+    const isHost = gs?.hostId === playerId;
     const draft = settingsDraft ?? options;
     const updateDraft = (partial: Partial<GameOptions>) =>
       setSettingsDraft((prev) => ({ ...(prev ?? options), ...partial }));
@@ -412,7 +490,7 @@ export default function App() {
             <button onClick={startGame} className="primary">
               Start Game
             </button>
-            {gs?.players?.[0]?.playerId === playerId && (gs?.players.length ?? 0) < 4 && (
+            {gs?.hostId === playerId && (gs?.players.length ?? 0) < 4 && (
               <button onClick={addBot} className="secondary">
                 Add Bot
               </button>
@@ -549,61 +627,18 @@ export default function App() {
     const maxRounds = gs.maxRounds ?? 11;
     const matchOver = gs.matchOver ?? roundNumber >= maxRounds;
 
-    const teamByPlayer = new Map<string, "A" | "B">();
-    if (teamMode) {
-      gs.players.forEach((p, idx) => {
-        teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
-      });
-    }
-
-    const teamIds: ("A" | "B")[] = ["A", "B"];
-    const teamLabel = (id: "A" | "B") => {
-      const names = gs.players
-        .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
-        .map((p) => p.name)
-        .join(" & ");
-      return names ? `Team ${id} (${names})` : `Team ${id}`;
-    };
-
-    const roundScores = gs.handHistory.map((res) => {
-      if (!teamMode) {
-        const totals = new Map<string, number>();
-        for (const p of gs.players) totals.set(p.playerId, 0);
-        for (const pen of res.penalties) {
-          totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
-        }
-        return totals;
-      }
-      const totals = new Map<"A" | "B", number>([
-        ["A", 0],
-        ["B", 0],
-      ]);
-      for (const pen of res.penalties) {
-        const team = teamByPlayer.get(pen.playerId);
-        if (!team) continue;
-        totals.set(team, (totals.get(team) ?? 0) + pen.points);
-      }
-      return totals;
-    });
-
+    const scoreTable = buildScoreTable(gs.players, gs.handHistory, teamMode);
     const totalsByPlayer = new Map<string, number>();
     const totalsByTeam = new Map<"A" | "B", number>([
       ["A", 0],
       ["B", 0],
     ]);
-    if (!teamMode) {
-      for (const p of gs.players) totalsByPlayer.set(p.playerId, 0);
-      for (const round of roundScores as Map<string, number>[]) {
-        for (const p of gs.players) {
-          totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
-        }
-      }
-    } else {
-      for (const round of roundScores as Map<"A" | "B", number>[]) {
-        for (const t of teamIds) {
-          totalsByTeam.set(t, (totalsByTeam.get(t) ?? 0) + (round.get(t) ?? 0));
-        }
-      }
+    if (scoreTable && !scoreTable.teamMode) {
+      gs.players.forEach((p, idx) => totalsByPlayer.set(p.playerId, scoreTable.totals[idx] ?? 0));
+    }
+    if (scoreTable && scoreTable.teamMode) {
+      totalsByTeam.set("A", scoreTable.totals[0] ?? 0);
+      totalsByTeam.set("B", scoreTable.totals[1] ?? 0);
     }
     let winners: string[] = [];
     if (matchOver) {
@@ -611,8 +646,10 @@ export default function App() {
         const min = Math.min(...gs.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0));
         winners = gs.players.filter((p) => (totalsByPlayer.get(p.playerId) ?? 0) === min).map((p) => p.name);
       } else {
-        const min = Math.min(...teamIds.map((t) => totalsByTeam.get(t) ?? 0));
-        winners = teamIds.filter((t) => (totalsByTeam.get(t) ?? 0) === min).map((t) => teamLabel(t));
+        const min = Math.min(...(["A", "B"] as const).map((t) => totalsByTeam.get(t) ?? 0));
+        winners = (["A", "B"] as const)
+          .filter((t) => (totalsByTeam.get(t) ?? 0) === min)
+          .map((t) => scoreTable?.teamLabel?.(t) ?? `Team ${t}`);
       }
     }
     return (
@@ -629,26 +666,26 @@ export default function App() {
             )}
           </div>
 
-          <div className={`round-scores ${teamMode ? "team-mode" : ""}`}>
+          <div className={`round-scores ${scoreTable?.teamMode ? "team-mode" : ""}`}>
             <div className="score-row score-header">
               <div>Round</div>
-              {!teamMode
-                ? gs.players.map((p) => <div key={p.playerId}>{p.name}</div>)
-                : teamIds.map((t) => <div key={t}>{teamLabel(t)}</div>)}
+              {(scoreTable?.headers ?? []).map((h, idx) => (
+                <div key={`hdr-${idx}`}>{h}</div>
+              ))}
             </div>
-            {roundScores.map((round, i) => (
+            {(scoreTable?.rows ?? []).map((row, i) => (
               <div key={`round-${i}`} className="score-row">
                 <div>#{i + 1}</div>
-                {!teamMode
-                  ? gs.players.map((p) => <div key={p.playerId}>{(round as Map<string, number>).get(p.playerId) ?? 0}</div>)
-                  : teamIds.map((t) => <div key={t}>{(round as Map<"A" | "B", number>).get(t) ?? 0}</div>)}
+                {row.map((val, idx) => (
+                  <div key={`r-${i}-${idx}`}>{val}</div>
+                ))}
               </div>
             ))}
             <div className="score-row score-total">
               <div>Total</div>
-              {!teamMode
-                ? gs.players.map((p) => <div key={p.playerId}>{totalsByPlayer.get(p.playerId) ?? 0}</div>)
-                : teamIds.map((t) => <div key={t}>{totalsByTeam.get(t) ?? 0}</div>)}
+              {(scoreTable?.totals ?? []).map((val, idx) => (
+                <div key={`tot-${idx}`}>{val}</div>
+              ))}
             </div>
           </div>
 
@@ -828,74 +865,10 @@ function GameBoard({
     return () => ro.disconnect();
   }, []);
 
-  const scoreTable = useMemo(() => {
-    const history = state.handHistory ?? [];
-    const teamMode = state.options.teamMode;
-    if (history.length === 0) return null;
-    if (!teamMode) {
-      const roundScores = history.map((res) => {
-        const totals = new Map<string, number>();
-        for (const p of state.players) totals.set(p.playerId, 0);
-        for (const pen of res.penalties) {
-          totals.set(pen.playerId, (totals.get(pen.playerId) ?? 0) + pen.points);
-        }
-        return totals;
-      });
-      const totalsByPlayer = new Map<string, number>();
-      for (const p of state.players) totalsByPlayer.set(p.playerId, 0);
-      for (const round of roundScores) {
-        for (const p of state.players) {
-          totalsByPlayer.set(p.playerId, (totalsByPlayer.get(p.playerId) ?? 0) + (round.get(p.playerId) ?? 0));
-        }
-      }
-      return {
-        headers: state.players.map((p) => p.name),
-        rows: roundScores.map((round) => state.players.map((p) => round.get(p.playerId) ?? 0)),
-        totals: state.players.map((p) => totalsByPlayer.get(p.playerId) ?? 0),
-        teamMode: false
-      };
-    }
-
-    const teamByPlayer = new Map<string, "A" | "B">();
-    state.players.forEach((p, idx) => {
-      teamByPlayer.set(p.playerId, p.teamId ?? (idx % 2 === 0 ? "A" : "B"));
-    });
-    const teamIds: ("A" | "B")[] = ["A", "B"];
-    const teamLabel = (id: "A" | "B") => {
-      const names = state.players
-        .filter((p, idx) => (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) === id)
-        .map((p) => p.name)
-        .join(" & ");
-      return names ? `Team ${id} (${names})` : `Team ${id}`;
-    };
-    const roundScores = history.map((res) => {
-      const totals = new Map<"A" | "B", number>([
-        ["A", 0],
-        ["B", 0],
-      ]);
-      for (const pen of res.penalties) {
-        const team = teamByPlayer.get(pen.playerId);
-        if (!team) continue;
-        totals.set(team, (totals.get(team) ?? 0) + pen.points);
-      }
-      return totals;
-    });
-    const totalsByTeam = new Map<"A" | "B", number>([
-      ["A", 0],
-      ["B", 0],
-    ]);
-    for (const round of roundScores) {
-      for (const t of teamIds) {
-        totalsByTeam.set(t, (totalsByTeam.get(t) ?? 0) + (round.get(t) ?? 0));
-      }
-    }
-    return {
-      headers: teamIds.map((t) => teamLabel(t)),
-      rows: roundScores.map((round) => teamIds.map((t) => round.get(t) ?? 0)),
-      totals: teamIds.map((t) => totalsByTeam.get(t) ?? 0),
-      teamMode: true
-    };
-  }, [state.handHistory, state.options.teamMode, state.players]);
+  const scoreTable = useMemo(
+    () => buildScoreTable(state.players, state.handHistory ?? [], state.options.teamMode),
+    [state.handHistory, state.options.teamMode, state.players]
+  );
 
   function rectsOverlap(a: { x: number; y: number }, b: { x: number; y: number }) {
     return (

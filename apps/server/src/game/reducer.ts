@@ -130,7 +130,8 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
             phase: "lobby",
             roomId: state.roomId,
             players: players.map((p) => ({ ...p, ready: false })),
-            options: state.options
+            options: state.options,
+            hostId: state.hostId
           };
         }
 
@@ -143,7 +144,7 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (state.phase !== "lobby" && state.phase !== "handEnd") throw new Error("BAD_PHASE");
 
       if (state.phase === "lobby") {
-        const hostId = state.players[0]?.playerId;
+        const hostId = state.hostId ?? state.players[0]?.playerId;
         if (!hostId) throw new Error("NEED_4_PLAYERS");
         if (action.playerId !== hostId) throw new Error("NOT_HOST");
       }
@@ -249,6 +250,9 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         // validate opening requirements
         const minOpenTotal = state.options.increasingMeldLimit ? state.openingLimit + 1 : 101;
         openRes = validateOpeningRequirements(meldObjs, state.okey, true, minOpenTotal);
+        if (!openRes.ok && openRes.total !== undefined && openRes.total >= 101) {
+          openRes = validateOpeningRequirements(meldObjs, state.okey, true, 101);
+        }
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,
@@ -391,6 +395,9 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (openedMode === "none") {
         const minOpenTotal = state.options.increasingMeldLimit ? state.openingLimit + 1 : 101;
         openRes = validateOpeningRequirements(meldObjs, state.okey, false, minOpenTotal);
+        if (!openRes.ok && openRes.total !== undefined && openRes.total >= 101) {
+          openRes = validateOpeningRequirements(meldObjs, state.okey, false, 101);
+        }
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,

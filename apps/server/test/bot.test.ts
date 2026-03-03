@@ -63,6 +63,17 @@ function setBotTurnState(
   rr.joinRoom({ roomId, socketId: "h1", name: "Host" });
   rr.joinRoom({ roomId, socketId: "p2", name: "P2" });
 
+  const badOptions = rr.setOptions("p2", {
+    teamMode: false,
+    increasingMeldLimit: false,
+    penaltyDiscardJoker: 101,
+    penaltyDiscardExtendable: 101,
+    penaltyFailedOpening: 101,
+    penaltyNoOpen: 202,
+    pairsMultiplier: 2
+  });
+  simpleAssert(!badOptions.ok && badOptions.error === "NOT_HOST", "non-host cannot set options");
+
   const notHost = rr.addBot("p2");
   simpleAssert(!notHost.ok && notHost.error === "NOT_HOST", "non-host cannot add bot");
 
@@ -73,6 +84,19 @@ function setBotTurnState(
   const bot = state.players.find((p: any) => p.isBot);
   simpleAssert(!!bot, "bot added to lobby");
   simpleAssert(bot.ready === true, "bot is ready by default");
+
+  const okOptions = rr.setOptions("h1", {
+    teamMode: true,
+    increasingMeldLimit: true,
+    penaltyDiscardJoker: 201,
+    penaltyDiscardExtendable: 202,
+    penaltyFailedOpening: 203,
+    penaltyNoOpen: 204,
+    pairsMultiplier: 4
+  });
+  simpleAssert(okOptions.ok, "host can set options");
+  const updated = rr.getRoomState(roomId) as any;
+  simpleAssert(updated.options.penaltyDiscardJoker === 201, "options updated in room state");
 }
 
 // --- bot turn behavior ---

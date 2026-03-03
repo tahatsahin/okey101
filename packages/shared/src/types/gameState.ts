@@ -24,6 +24,7 @@ export type LobbyState = {
   roomId: RoomId;
   players: LobbyPlayerPublic[];
   options: GameOptions;
+  hostId?: PlayerId;
 };
 
 export type TurnStep = "mustDraw" | "mustDiscard" | "mustMeldDiscard";
@@ -47,6 +48,7 @@ export type TurnStateServer = {
   roomId: RoomId;
   players: LobbyPlayerPublic[];
   options: GameOptions;
+  hostId?: PlayerId;
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
@@ -72,6 +74,7 @@ export type HandEndState = {
   roomId: RoomId;
   players: LobbyPlayerPublic[];
   options: GameOptions;
+  hostId?: PlayerId;
   result: HandResult;
   handHistory: HandResult[];
   dealerIndex: number;
@@ -87,6 +90,7 @@ export type TurnStateClient = {
   roomId: RoomId;
   players: LobbyPlayerPublic[];
   options: GameOptions;
+  hostId?: PlayerId;
   currentPlayerId: PlayerId;
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };

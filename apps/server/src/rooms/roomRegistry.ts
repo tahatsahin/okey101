@@ -9,6 +9,8 @@ type RoomRuntime = {
   state: GameStateServer;
   version: number;
   options: GameOptions;
+  hostId?: PlayerId;
+  noticeTimer?: NodeJS.Timeout;
 
   // reconnect
   tokenToPlayerId: Map<string, PlayerId>;
@@ -46,7 +48,8 @@ export class RoomRegistry {
         teamId: p.teamId,
         seatIndex: p.seatIndex
       })),
-      options: room.options
+      options: room.options,
+      hostId: room.hostId
     };
     room.version++;
   }
@@ -63,6 +66,18 @@ export class RoomRegistry {
 
   private scheduleBotTurn(roomId: RoomId) {
     setTimeout(() => this.runBotTurn(roomId), 200);
+  }
+
+  private scheduleNoticeClear(room: RoomRuntime) {
+    if (room.noticeTimer) clearTimeout(room.noticeTimer);
+    room.noticeTimer = setTimeout(() => {
+      const state = room.state;
+      if (state.phase !== "turn") return;
+      if (!state.notice) return;
+      room.state = { ...state, notice: undefined };
+      room.version++;
+      this.notify?.(room.roomId);
+    }, 5000);
   }
 
   private runBotTurn(roomId: RoomId) {
@@ -130,7 +145,8 @@ export class RoomRegistry {
             penaltyFailedOpening: 101,
             penaltyNoOpen: 202,
             pairsMultiplier: 2
-          }
+          },
+          hostId: undefined
         },
         version: 0,
         options: {
@@ -142,6 +158,7 @@ export class RoomRegistry {
           penaltyNoOpen: 202,
           pairsMultiplier: 2
         },
+        hostId: undefined,
         tokenToPlayerId: new Map(),
         playerIdToToken: new Map()
       };
@@ -192,6 +209,7 @@ export class RoomRegistry {
       isBot: false,
       seatIndex
     });
+    if (!room.hostId) room.hostId = playerId;
 
     room.tokenToPlayerId.set(token, playerId);
     room.playerIdToToken.set(playerId, token);
@@ -231,7 +249,7 @@ export class RoomRegistry {
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
     if (room.state.phase !== "lobby") return { ok: false, error: "BAD_PHASE" };
 
-    const hostId = room.players[0]?.playerId;
+    const hostId = room.hostId;
     if (!hostId) return { ok: false, error: "NEED_4_PLAYERS" };
     if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
 
@@ -265,6 +283,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "DRAW", playerId: meta.playerId, source });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -281,6 +300,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "DISCARD", playerId: meta.playerId, tileId });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -297,6 +317,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "RETURN_TAKEN_DISCARD", playerId: meta.playerId });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -313,6 +334,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "OPEN_MELD", playerId: meta.playerId, melds });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -329,6 +351,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "LAYOFF", playerId: meta.playerId, tableMeldId, tileIds });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -345,6 +368,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "TAKE_AND_MELD", playerId: meta.playerId, fromPlayerId, melds });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       this.scheduleBotTurn(room.roomId);
       return { ok: true };
     } catch (e: any) {
@@ -361,6 +385,7 @@ export class RoomRegistry {
     try {
       room.state = reduce(room.state, { type: "REORDER_HAND", playerId: meta.playerId, tileIds });
       room.version++;
+      if (room.state.phase === "turn" && room.state.notice) this.scheduleNoticeClear(room);
       return { ok: true };
     } catch (e: any) {
       return { ok: false, error: String(e?.message ?? e) };
@@ -374,7 +399,7 @@ export class RoomRegistry {
     if (!room) return { ok: false, error: "NOT_IN_ROOM" };
     if (room.state.phase !== "lobby") return { ok: false, error: "BAD_PHASE" };
 
-    const hostId = room.players[0]?.playerId;
+    const hostId = room.hostId;
     if (!hostId) return { ok: false, error: "NO_HOST" };
     if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
     if (room.players.length >= 4) return { ok: false, error: "ROOM_FULL" };
@@ -393,6 +418,7 @@ export class RoomRegistry {
       isBot: true,
       seatIndex
     });
+    if (!room.hostId) room.hostId = botId;
 
     this.syncLobbyState(room);
     return { ok: true };

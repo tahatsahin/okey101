@@ -118,6 +118,25 @@ function makeBaseTurnState(overrides?: Partial<TurnStateServer>): TurnStateServe
   simpleAssert(!!pen, 'penalty applied for discarding extendable tile');
 })();
 
+// --- custom penalty options applied ---
+(function testCustomPenaltyOptions() {
+  const state = makeBaseTurnState({
+    options: {
+      teamMode: false,
+      increasingMeldLimit: false,
+      penaltyDiscardJoker: 77,
+      penaltyDiscardExtendable: 66,
+      penaltyFailedOpening: 55,
+      penaltyNoOpen: 44,
+      pairsMultiplier: 3
+    },
+    hands: { p1: [tile('joker1', 'red', 2), tile('safe', 'blue', 5)], p2: [], p3: [], p4: [] },
+  });
+  const next = reduce(state, { type: 'DISCARD', playerId: 'p1', tileId: 'joker1' }) as TurnStateServer;
+  const pen = (next.penalties ?? []).find((p) => p.reason === 'DISCARD_JOKER');
+  simpleAssert(pen?.points === 77, 'custom penaltyDiscardJoker is applied');
+})();
+
 // --- DISCARD: finishing discard should NOT trigger extendable penalty ---
 (function testFinishingDiscardNoPenalty() {
   const state = makeBaseTurnState({

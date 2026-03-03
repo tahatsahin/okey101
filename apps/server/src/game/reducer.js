@@ -20,7 +20,7 @@ export function reduce(state, action) {
         case "START_GAME": {
             if (state.phase !== "lobby")
                 throw new Error("BAD_PHASE");
-            const hostId = state.players[0]?.playerId;
+            const hostId = state.hostId ?? state.players[0]?.playerId;
             if (!hostId)
                 throw new Error("NEED_4_PLAYERS");
             if (action.playerId !== hostId)
