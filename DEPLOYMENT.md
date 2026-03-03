@@ -89,14 +89,14 @@ server {
 }
 ```
 
-Then:
+Then (note: the `certbot` service runs a renew loop by default, so override the entrypoint for `certonly`):
 
 ```bash
 cd /opt/okey101
 
 docker compose up -d app nginx
 
-docker compose run --rm certbot certonly \
+docker compose run --rm --entrypoint certbot certbot certonly \
   --webroot -w /var/lib/letsencrypt \
   -d okey.tahatsahin.com \
   --email you@email.com --agree-tos --no-eff-email
