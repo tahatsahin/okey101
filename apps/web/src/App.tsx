@@ -44,6 +44,19 @@ function tokenKey(roomId: string) {
   return `okey101_token:${roomId}`;
 }
 
+const COLOR_ORDER = ["red", "black", "blue", "yellow"] as const;
+
+function sortKeyForTile(t: Tile, okey: { color: string; value: number }) {
+  const resolved =
+    t.kind === "fakeJoker"
+      ? { color: okey.color, value: okey.value }
+      : { color: t.color, value: t.value };
+  return {
+    colorIndex: COLOR_ORDER.indexOf(resolved.color as (typeof COLOR_ORDER)[number]),
+    value: resolved.value
+  };
+}
+
 /* ── Position helpers ─────────────────────────────────── */
 
 /** Given the full player order and who "you" are, return [bottom, right, top, left] player ids */
@@ -124,6 +137,10 @@ export default function App() {
   const [joined, setJoined] = useState(false);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [serverState, setServerState] = useState<ServerGameStatePayload | null>(null);
+  const [showSortButtons, setShowSortButtons] = useState<boolean>(() => {
+    const v = localStorage.getItem("okey101:showSortButtons");
+    return v !== "false";
+  });
 
   useEffect(() => {
     const onConnect = () => setConnected(true);
@@ -269,6 +286,18 @@ export default function App() {
               </div>
             ))}
           </div>
+          <label className="lobby-toggle">
+            <input
+              type="checkbox"
+              checked={showSortButtons}
+              onChange={(e) => {
+                const v = e.target.checked;
+                setShowSortButtons(v);
+                localStorage.setItem("okey101:showSortButtons", String(v));
+              }}
+            />
+            Show sort buttons
+          </label>
           <div className="lobby-actions">
             <button onClick={() => setReady(true)}>Ready</button>
             <button onClick={() => setReady(false)} className="secondary">
@@ -388,6 +417,7 @@ export default function App() {
       state={gs}
       playerId={playerId}
       isMyTurn={isMyTurn}
+      showSortButtons={showSortButtons}
       onDraw={draw}
       onDiscard={discard}
       onReturnDiscard={returnDiscard}
@@ -407,6 +437,7 @@ function GameBoard({
   state,
   playerId,
   isMyTurn,
+  showSortButtons,
   onDraw,
   onDiscard,
   onReturnDiscard,
@@ -418,6 +449,7 @@ function GameBoard({
   state: TurnState;
   playerId: string | null;
   isMyTurn: boolean;
+  showSortButtons: boolean;
   onDraw: (source: "deck" | "prevDiscard") => void;
   onDiscard: (tileId: string) => void;
   onReturnDiscard: () => void;
@@ -588,6 +620,70 @@ function GameBoard({
   function handleReturnDiscard() {
     onReturnDiscard();
     clearBuilder();
+  }
+
+  function resolvedKey(t: Tile) {
+    if (t.kind === "fakeJoker") return { color: state.okey.color, value: state.okey.value };
+    return { color: t.color, value: t.value };
+  }
+
+  function layoutOrder(orderIds: string[]) {
+    const perRow = Math.max(1, Math.floor((handSize.w + TILE_GAP) / (TILE_W + TILE_GAP)));
+    const next: Record<string, { x: number; y: number }> = {};
+    for (let i = 0; i < orderIds.length; i++) {
+      const id = orderIds[i]!;
+      const row = Math.min(1, Math.floor(i / perRow));
+      const col = i % perRow;
+      const x = col * (TILE_W + TILE_GAP);
+      const y = row === 0 ? 0 : TILE_H + ROW_GAP;
+      next[id] = { x, y };
+    }
+    return next;
+  }
+
+  function applyOrder(orderIds: string[]) {
+    clearBuilder();
+    setTilePositions((prev) => ({ ...prev, ...layoutOrder(orderIds) }));
+    onReorder(orderIds);
+  }
+
+  function sortNormal() {
+    const ordered = [...state.yourHand]
+      .sort((a, b) => {
+        const ka = sortKeyForTile(a, state.okey);
+        const kb = sortKeyForTile(b, state.okey);
+        if (ka.colorIndex !== kb.colorIndex) return ka.colorIndex - kb.colorIndex;
+        if (ka.value !== kb.value) return ka.value - kb.value;
+        if (a.kind !== b.kind) return a.kind === "fakeJoker" ? 1 : -1;
+        return a.id.localeCompare(b.id);
+      })
+      .map((t) => t.id);
+    applyOrder(ordered);
+  }
+
+  function sortPairs() {
+    const groups = new Map<string, Tile[]>();
+    for (const t of state.yourHand) {
+      const r = resolvedKey(t);
+      const key = `${r.color}-${r.value}`;
+      const list = groups.get(key) ?? [];
+      list.push(t);
+      groups.set(key, list);
+    }
+    const orderedGroups = [...groups.entries()].sort(([ka, va], [kb, vb]) => {
+      const countDiff = vb.length - va.length;
+      if (countDiff !== 0) return countDiff;
+      const [ca, vaStr] = ka.split("-");
+      const [cb, vbStr] = kb.split("-");
+      const aColor = COLOR_ORDER.indexOf(ca as (typeof COLOR_ORDER)[number]);
+      const bColor = COLOR_ORDER.indexOf(cb as (typeof COLOR_ORDER)[number]);
+      if (aColor !== bColor) return aColor - bColor;
+      return Number(vaStr) - Number(vbStr);
+    });
+    const ordered = orderedGroups.flatMap(([, tiles]) =>
+      tiles.sort((a, b) => a.id.localeCompare(b.id)).map((t) => t.id)
+    );
+    applyOrder(ordered);
   }
   function submitOpenMeld() {
     const allMelds =
@@ -909,6 +1005,16 @@ function GameBoard({
             >
               Draw
             </button>
+            {showSortButtons && (
+              <>
+                <button onClick={sortNormal} className="secondary">
+                  Sort
+                </button>
+                <button onClick={sortPairs} className="secondary">
+                  Sort Pairs
+                </button>
+              </>
+            )}
             {isMyTurn &&
               state.turnStep === "mustDiscard" &&
               selectedIds.length === 1 && (

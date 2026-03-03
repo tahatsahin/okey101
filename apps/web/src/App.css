@@ -89,6 +89,20 @@ body {
 }
 .join-card button:hover { background: #00acc1; }
 
+.lobby-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin: 10px 0 4px;
+  font-size: 0.85rem;
+  color: rgba(255,255,255,0.85);
+}
+.lobby-toggle input {
+  width: 16px;
+  height: 16px;
+}
+
 .hand-end-summary {
   display: flex;
   flex-direction: column;
