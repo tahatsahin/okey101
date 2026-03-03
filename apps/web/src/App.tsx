@@ -151,9 +151,11 @@ function TileChip({
   faceDown,
   okey,
   draggable,
+  dragging,
   onDragStart,
   onDragOver,
   onDrop,
+  onDragEnd,
 }: {
   tile?: Tile | TableMeldTile;
   selected?: boolean;
@@ -164,9 +166,11 @@ function TileChip({
   faceDown?: boolean;
   okey?: { color: string; value: number };
   draggable?: boolean;
+  dragging?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }) {
   if (faceDown || !tile) {
     return <div className="tile face-down" />;
@@ -181,6 +185,8 @@ function TileChip({
     disabled ? "disabled" : "",
     isOkey ? "okey-tile" : "",
     hint ? "hint" : "",
+    draggable ? "draggable" : "",
+    dragging ? "dragging" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -195,6 +201,7 @@ function TileChip({
       onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
+      onDragEnd={onDragEnd}
     >
       <span className="tile-value">{tileLabel(tile)}</span>
       <span className="tile-dot" />
@@ -782,6 +789,7 @@ function GameBoard({
   const TILE_H = 58;
   const TILE_GAP = 6;
   const ROW_GAP = 12;
+  const MAX_ROW_TILES = 18;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [meldGroups, setMeldGroups] = useState<string[][]>([]);
   const [layoffTargetId, setLayoffTargetId] = useState<string | null>(null);
@@ -792,10 +800,17 @@ function GameBoard({
     fromPlayerId?: string;
     offsetX?: number;
     offsetY?: number;
+    movingIds?: string[];
+    startPositions?: Record<string, { x: number; y: number }>;
+    anchorStart?: { x: number; y: number };
   } | null>(null);
   const handRef = useRef<HTMLDivElement | null>(null);
   const [handSize, setHandSize] = useState({ w: 900, h: 200 });
   const [tilePositions, setTilePositions] = useState<Record<string, { x: number; y: number }>>({});
+  const [draggingIds, setDraggingIds] = useState<string[]>([]);
+  const [previewPositions, setPreviewPositions] = useState<Record<string, { x: number; y: number }> | null>(
+    null
+  );
   const pendingDropPos = useRef<{ x: number; y: number } | null>(null);
   const prevHandIdsRef = useRef<Set<string>>(new Set());
 
@@ -888,20 +903,172 @@ function GameBoard({
     );
   }
 
-  function findFreeSpot(existing: Record<string, { x: number; y: number }>, excludeIds?: Set<string>) {
-    const maxX = Math.max(0, handSize.w - TILE_W);
-    const rows = [0, TILE_H + ROW_GAP];
-    for (const y of rows) {
-      for (let x = 0; x <= maxX; x += TILE_W + TILE_GAP) {
-        const pos = { x, y };
-        const overlap = Object.entries(existing).some(([id, p]) => {
-          if (excludeIds?.has(id)) return false;
-          return rectsOverlap(pos, p);
-        });
-        if (!overlap) return pos;
+  const rowTop = 0;
+  const rowBottom = TILE_H + ROW_GAP;
+  const rows = [rowTop, rowBottom];
+  const rowMaxX = (MAX_ROW_TILES - 1) * (TILE_W + TILE_GAP);
+
+  function clampX(x: number) {
+    const maxX = Math.min(Math.max(0, handSize.w - TILE_W), rowMaxX);
+    return Math.min(Math.max(0, x), maxX);
+  }
+
+  function snapToRow(rawY: number) {
+    const distTop = Math.abs(rawY - rowTop);
+    const distBottom = Math.abs(rawY - rowBottom);
+    return distTop <= distBottom ? rowTop : rowBottom;
+  }
+
+  function reflowRow(
+    ids: string[],
+    next: Record<string, { x: number; y: number }>
+  ) {
+    if (ids.length === 0) return;
+    const maxX = Math.min(Math.max(0, handSize.w - TILE_W), rowMaxX);
+    let cursor = next[ids[0]]?.x ?? 0;
+    cursor = Math.max(0, Math.min(cursor, maxX));
+    for (let i = 0; i < ids.length; i++) {
+      const id = ids[i]!;
+      const pos = next[id] ?? { x: 0, y: rowTop };
+      let x = i === 0 ? cursor : pos.x;
+      const minX = (next[ids[i - 1] ?? id]?.x ?? cursor) + (i === 0 ? 0 : TILE_W + TILE_GAP);
+      if (i > 0) x = Math.max(x, minX);
+      next[id] = { x, y: pos.y };
+    }
+    const lastId = ids[ids.length - 1]!;
+    const overflow = (next[lastId]?.x ?? 0) - maxX;
+    if (overflow > 0) {
+      for (const id of ids) {
+        const pos = next[id] ?? { x: 0, y: rowTop };
+        next[id] = { x: Math.max(0, pos.x - overflow), y: pos.y };
+      }
+      cursor = Math.max(0, Math.min(next[ids[0]]?.x ?? 0, maxX));
+      for (let i = 0; i < ids.length; i++) {
+        const id = ids[i]!;
+        const pos = next[id] ?? { x: 0, y: rowTop };
+        let x = i === 0 ? cursor : pos.x;
+        const minX = (next[ids[i - 1] ?? id]?.x ?? cursor) + (i === 0 ? 0 : TILE_W + TILE_GAP);
+        if (i > 0) x = Math.max(x, minX);
+        if (x > maxX) x = maxX;
+        next[id] = { x, y: pos.y };
       }
     }
-    return { x: 0, y: 0 };
+  }
+
+  function reflowPositions(
+    next: Record<string, { x: number; y: number }>,
+    excludeIds?: Set<string>
+  ) {
+    for (const row of rows) {
+      const ids = Object.keys(next)
+        .filter((id) => (excludeIds ? !excludeIds.has(id) : true))
+        .filter((id) => next[id]?.y === row)
+        .sort((a, b) => (next[a]?.x ?? 0) - (next[b]?.x ?? 0));
+      let hasOverlap = false;
+      for (let i = 1; i < ids.length; i++) {
+        const prevId = ids[i - 1]!;
+        const curId = ids[i]!;
+        const prevX = next[prevId]?.x ?? 0;
+        const curX = next[curId]?.x ?? 0;
+        if (curX < prevX + TILE_W) {
+          hasOverlap = true;
+          break;
+        }
+      }
+      if (hasOverlap) reflowRow(ids, next);
+    }
+    return next;
+  }
+
+  function countRowTiles(
+    positions: Record<string, { x: number; y: number }>,
+    row: number,
+    excludeIds?: Set<string>
+  ) {
+    let count = 0;
+    for (const [id, pos] of Object.entries(positions)) {
+      if (excludeIds?.has(id)) continue;
+      if (pos.y === row) count += 1;
+    }
+    return count;
+  }
+
+  function chooseRowWithSpace(
+    preferred: number,
+    positions: Record<string, { x: number; y: number }>,
+    extra: number,
+    excludeIds?: Set<string>
+  ) {
+    const preferredCount = countRowTiles(positions, preferred, excludeIds);
+    if (preferredCount + extra <= MAX_ROW_TILES) return preferred;
+    const other = preferred === rowTop ? rowBottom : rowTop;
+    const otherCount = countRowTiles(positions, other, excludeIds);
+    if (otherCount + extra <= MAX_ROW_TILES) return other;
+    return null;
+  }
+
+  function computeMovedPositions(
+    ds: NonNullable<typeof dragState.current>,
+    dropX: number,
+    dropY: number
+  ) {
+    const movingIds = ds.movingIds ?? (ds.tileId ? [ds.tileId] : []);
+    const startPositions = ds.startPositions ?? {};
+    const anchorId = ds.tileId;
+    const anchorStart = (anchorId && startPositions[anchorId]) || { x: 0, y: rowTop };
+    const deltaX = dropX - anchorStart.x;
+    const deltaY = dropY - anchorStart.y;
+    const next: Record<string, { x: number; y: number }> = {};
+    for (const id of movingIds) {
+      const base = startPositions[id] ?? tilePositions[id] ?? { x: 0, y: rowTop };
+      const rawX = base.x + deltaX;
+      const rawY = base.y + deltaY;
+      next[id] = { x: clampX(rawX), y: snapToRow(rawY) };
+    }
+    return next;
+  }
+
+  function orderFromPositions(
+    positions: Record<string, { x: number; y: number }>,
+    ids: string[]
+  ) {
+    return ids
+      .slice()
+      .sort((a, b) => {
+        const pa = positions[a] ?? { x: 0, y: rowTop };
+        const pb = positions[b] ?? { x: 0, y: rowTop };
+        if (pa.y === pb.y) return pa.x - pb.x;
+        return pa.y - pb.y;
+      });
+  }
+
+  function findFreeSpot(existing: Record<string, { x: number; y: number }>, excludeIds?: Set<string>) {
+    const maxX = Math.min(Math.max(0, handSize.w - TILE_W), rowMaxX);
+    const rowData = rows.map((row) => {
+      const xs = Object.entries(existing)
+        .filter(([id, pos]) => {
+          if (excludeIds?.has(id)) return false;
+          return pos.y === row;
+        })
+        .map(([, pos]) => pos.x);
+      const right = xs.length > 0 ? Math.max(...xs) : -(TILE_W + TILE_GAP);
+      return {
+        row,
+        count: xs.length,
+        nextX: right + TILE_W + TILE_GAP,
+        full: xs.length >= MAX_ROW_TILES,
+      };
+    });
+    const candidates = rowData.filter((r) => !r.full);
+    if (candidates.length === 0) return { x: 0, y: rowTop };
+    candidates.sort((a, b) => a.count - b.count);
+    let choice = candidates[0]!;
+    if (choice.nextX > maxX && candidates.length > 1) {
+      const alt = candidates[1]!;
+      if (alt.nextX <= maxX) choice = alt;
+    }
+    const x = clampX(Math.max(0, choice.nextX));
+    return { x, y: choice.row };
   }
 
   // Reconcile positions whenever the server hand changes
@@ -923,13 +1090,13 @@ function GameBoard({
             if (groupedIds.has(id)) return false;
             return rectsOverlap(pos, p);
           });
-          next[t.id] = overlap ? findFreeSpot(next, groupedIds) : pos;
+          next[t.id] = overlap ? findFreeSpot(next, groupedIds) : { x: clampX(pos.x), y: snapToRow(pos.y) };
         } else {
           next[t.id] = findFreeSpot(next, groupedIds);
         }
       }
       prevHandIdsRef.current = new Set(state.yourHand.map((t) => t.id));
-      return next;
+      return reflowPositions(next, groupedIds);
     });
   }, [state.yourHand, handSize.w, handSize.h, groupedIds]);
 
@@ -994,7 +1161,10 @@ function GameBoard({
   }
 
   function layoutOrder(orderIds: string[]) {
-    const perRow = Math.max(1, Math.floor((handSize.w + TILE_GAP) / (TILE_W + TILE_GAP)));
+    const perRow = Math.max(
+      1,
+      Math.min(MAX_ROW_TILES, Math.floor((handSize.w + TILE_GAP) / (TILE_W + TILE_GAP)))
+    );
     const next: Record<string, { x: number; y: number }> = {};
     for (let i = 0; i < orderIds.length; i++) {
       const id = orderIds[i]!;
@@ -1116,22 +1286,35 @@ function GameBoard({
   const handleHandTileDragStart = useCallback(
     (tileId: string) => (e: React.DragEvent) => {
       const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      const useGroup = selectedIds.includes(tileId) && selectedIds.length > 1;
+      const movingIds = useGroup ? selectedIds : [tileId];
+      const startPositions: Record<string, { x: number; y: number }> = {};
+      for (const id of movingIds) {
+        startPositions[id] = tilePositions[id] ?? findFreeSpot(tilePositions, groupedIds);
+      }
       dragState.current = {
         type: "hand",
         tileId,
         offsetX: e.clientX - rect.left,
-        offsetY: e.clientY - rect.top
+        offsetY: e.clientY - rect.top,
+        movingIds,
+        startPositions,
+        anchorStart: startPositions[tileId] ?? { x: 0, y: rowTop }
       };
       e.dataTransfer.effectAllowed = "move";
       e.dataTransfer.setData("text/plain", tileId);
+      setDraggingIds(movingIds);
+      setPreviewPositions(null);
     },
-    []
+    [findFreeSpot, groupedIds, rowTop, selectedIds, tilePositions]
   );
 
   const handleDeckDragStart = useCallback((e: React.DragEvent) => {
     dragState.current = { type: "deck" };
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("text/plain", "deck");
+    setDraggingIds([]);
+    setPreviewPositions(null);
   }, []);
 
   const handleDiscardDragStart = useCallback(
@@ -1139,6 +1322,8 @@ function GameBoard({
       dragState.current = { type: "discard", tileId, fromPlayerId };
       e.dataTransfer.effectAllowed = "copy";
       e.dataTransfer.setData("text/plain", tileId);
+      setDraggingIds([]);
+      setPreviewPositions(null);
     },
     []
   );
@@ -1147,7 +1332,32 @@ function GameBoard({
     e.preventDefault();
     const ds = dragState.current;
     e.dataTransfer.dropEffect = ds?.type === "deck" || ds?.type === "discard" ? "copy" : "move";
-  }, []);
+    if (!ds || ds.type !== "hand" || !handRef.current) return;
+    const rect = handRef.current.getBoundingClientRect();
+    const rawX = e.clientX - rect.left - (ds.offsetX ?? TILE_W / 2);
+    const rawY = e.clientY - rect.top - (ds.offsetY ?? TILE_H / 2);
+    const x = clampX(rawX);
+    const preferredRow = snapToRow(rawY);
+    const targetRow = chooseRowWithSpace(preferredRow, tilePositions, 0, groupedIds);
+    if (targetRow === null) {
+      setPreviewPositions(null);
+      return;
+    }
+    const y = targetRow;
+    const preview = computeMovedPositions(ds, x, y);
+    const movingIds = ds.movingIds ?? (ds.tileId ? [ds.tileId] : []);
+    const other = Object.fromEntries(
+      Object.entries(tilePositions).filter(([id]) => !movingIds.includes(id) && !groupedIds.has(id))
+    );
+    let targetCount = 0;
+    for (const pos of Object.values(other)) if (pos.y === y) targetCount += 1;
+    for (const pos of Object.values(preview)) if (pos.y === y) targetCount += 1;
+    if (targetCount > MAX_ROW_TILES) {
+      setPreviewPositions(null);
+      return;
+    }
+    setPreviewPositions(preview);
+  }, [clampX, computeMovedPositions, groupedIds, snapToRow, tilePositions, chooseRowWithSpace]);
 
   const handleHandDrop = useCallback(
     (e: React.DragEvent) => {
@@ -1160,16 +1370,21 @@ function GameBoard({
           const rect = handRef.current.getBoundingClientRect();
           const rawX = e.clientX - rect.left - TILE_W / 2;
           const rawY = e.clientY - rect.top - TILE_H / 2;
-          const x = Math.min(Math.max(0, rawX), Math.max(0, handSize.w - TILE_W));
-          const rowTop = 0;
-          const rowBottom = TILE_H + ROW_GAP;
-          const distTop = Math.abs(rawY - rowTop);
-          const distBottom = Math.abs(rawY - rowBottom);
-          const y = distTop <= distBottom ? rowTop : rowBottom;
-          pendingDropPos.current = { x, y };
+          const x = clampX(rawX);
+          const preferredRow = snapToRow(rawY);
+          const targetRow = chooseRowWithSpace(preferredRow, tilePositions, 1, groupedIds);
+          if (targetRow === null) {
+            dragState.current = null;
+            setPreviewPositions(null);
+            setDraggingIds([]);
+            return;
+          }
+          pendingDropPos.current = { x, y: targetRow };
           onDraw("deck");
         }
         dragState.current = null;
+        setPreviewPositions(null);
+        setDraggingIds([]);
         return;
       }
 
@@ -1177,6 +1392,8 @@ function GameBoard({
         if (!isMyTurn || state.turnStep !== "mustDraw" || !ds.tileId || !ds.fromPlayerId) return;
         onDraw("prevDiscard");
         dragState.current = null;
+        setPreviewPositions(null);
+        setDraggingIds([]);
         return;
       }
 
@@ -1184,35 +1401,64 @@ function GameBoard({
         const rect = handRef.current.getBoundingClientRect();
         const rawX = e.clientX - rect.left - (ds.offsetX ?? TILE_W / 2);
         const rawY = e.clientY - rect.top - (ds.offsetY ?? TILE_H / 2);
-        const x = Math.min(Math.max(0, rawX), Math.max(0, handSize.w - TILE_W));
-        const rowTop = 0;
-        const rowBottom = TILE_H + ROW_GAP;
-        const distTop = Math.abs(rawY - rowTop);
-        const distBottom = Math.abs(rawY - rowBottom);
-        const y = distTop <= distBottom ? rowTop : rowBottom;
+        const x = clampX(rawX);
+        const preferredRow = snapToRow(rawY);
+        const targetRow = chooseRowWithSpace(preferredRow, tilePositions, 0, groupedIds);
+        if (targetRow === null) {
+          dragState.current = null;
+          setPreviewPositions(null);
+          setDraggingIds([]);
+          return;
+        }
+        const y = targetRow;
+        const moved = computeMovedPositions(ds, x, y);
+        const movingIds = ds.movingIds ?? (ds.tileId ? [ds.tileId] : []);
+        const other = Object.fromEntries(
+          Object.entries(tilePositions).filter(([id]) => !movingIds.includes(id) && !groupedIds.has(id))
+        );
+        const targetCount =
+          countRowTiles(other, targetRow) + countRowTiles(moved, targetRow);
+        if (targetCount > MAX_ROW_TILES) {
+          setPreviewPositions(null);
+          setDraggingIds([]);
+          dragState.current = null;
+          return;
+        }
+        let nextPositions: Record<string, { x: number; y: number }> | null = null;
         setTilePositions((prev) => {
-          const next = { ...prev, [ds.tileId!]: { x, y } };
-          const overlap = Object.entries(next).some(([id, pos]) => {
-            if (id === ds.tileId) return false;
-            if (groupedIds.has(id)) return false;
-            return rectsOverlap(next[ds.tileId!], pos);
-          });
-          if (overlap) return prev;
+          const next = { ...prev, ...moved };
+          reflowPositions(next, groupedIds);
+          nextPositions = next;
           return next;
         });
-        const ordered = state.yourHand
-          .map((t) => t.id)
-          .sort((a, b) => {
-            const pa = a === ds.tileId ? { x, y } : tilePositions[a] ?? { x: 0, y: 0 };
-            const pb = b === ds.tileId ? { x, y } : tilePositions[b] ?? { x: 0, y: 0 };
-            if (pa.y === pb.y) return pa.x - pb.x;
-            return pa.y - pb.y;
-          });
+        const ordered = orderFromPositions(
+          nextPositions ?? tilePositions,
+          state.yourHand.map((t) => t.id)
+        );
         onReorder(ordered);
       }
       dragState.current = null;
+      setPreviewPositions(null);
+      setDraggingIds([]);
     },
-    [groupedIds, handSize.h, handSize.w, isMyTurn, onDraw, onReorder, rectsOverlap, state.turnStep, state.yourHand, tilePositions]
+    [
+      clampX,
+      chooseRowWithSpace,
+      computeMovedPositions,
+      countRowTiles,
+      groupedIds,
+      handSize.h,
+      handSize.w,
+      isMyTurn,
+      onDraw,
+      onReorder,
+      orderFromPositions,
+      reflowPositions,
+      snapToRow,
+      state.turnStep,
+      state.yourHand,
+      tilePositions
+    ]
   );
 
   const handleDiscardDrop = useCallback(
@@ -1225,6 +1471,8 @@ function GameBoard({
       onDiscard(ds.tileId);
       setSelectedIds((prev) => prev.filter((id) => id !== ds.tileId));
       dragState.current = null;
+      setPreviewPositions(null);
+      setDraggingIds([]);
     },
     [isMyTurn, onDiscard, playerId, state.turnStep]
   );
@@ -1237,6 +1485,17 @@ function GameBoard({
     },
     []
   );
+
+  const handleHandDragEnd = useCallback(() => {
+    dragState.current = null;
+    setPreviewPositions(null);
+    setDraggingIds([]);
+  }, []);
+
+  const handleHandDragLeave = useCallback((e: React.DragEvent) => {
+    if (e.currentTarget !== e.target) return;
+    setPreviewPositions(null);
+  }, []);
 
   const seatIds = {
     bottom: bottomId,
@@ -1551,17 +1810,32 @@ function GameBoard({
 
         {/* Free-form hand area */}
         <div
-          className="hand-area"
+          className={`hand-area ${draggingIds.length > 0 ? "dragging" : ""}`}
           ref={handRef}
           onDragOver={handleHandDragOver}
           onDrop={handleHandDrop}
+          onDragLeave={handleHandDragLeave}
         >
+          {previewPositions &&
+            Object.entries(previewPositions).map(([id, pos]) => {
+              const t = tileById(id);
+              if (!t) return null;
+              return (
+                <div
+                  key={`ghost-${id}`}
+                  className="hand-ghost"
+                  style={{ left: pos.x, top: pos.y }}
+                >
+                  <TileChip tile={t} disabled okey={state.okey} />
+                </div>
+              );
+            })}
           {visibleHand.map((tile) => {
             const pos = tilePositions[tile.id] ?? { x: 0, y: 0 };
             return (
               <div
                 key={tile.id}
-                className="hand-tile"
+                className={`hand-tile ${draggingIds.includes(tile.id) ? "dragging" : ""}`}
                 style={{ left: pos.x, top: pos.y }}
               >
                 <TileChip
@@ -1578,7 +1852,9 @@ function GameBoard({
                   }}
                   okey={state.okey}
                   draggable
+                  dragging={draggingIds.includes(tile.id)}
                   onDragStart={handleHandTileDragStart(tile.id)}
+                  onDragEnd={handleHandDragEnd}
                 />
               </div>
             );
