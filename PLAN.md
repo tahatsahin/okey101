@@ -1,5 +1,5 @@
 # Okey101 Project Plan (Todo List)
-Last updated: 2026-03-02
+Last updated: 2026-03-03
 
 ## Snapshot
 - (x) Baseline: full-stack TypeScript monorepo with Socket.IO server and React client.
@@ -57,6 +57,7 @@ Last updated: 2026-03-02
 
 ## Nice-to-Have Features
 - ( ) Game log/history and replay of last turn.
-- ( ) Auto-sort hand (by color/run) and smart grouping hints.
+- (x) Auto-sort hand (by normal / pair order with lobby toggle).
+- (x) Exact tile grouping agent for optimal run/set grouping with joker support.
 - ( ) Basic anti-stall (soft timers) and reconnect indicators.
 - ( ) Allow removing/replacing bots when a human joins.

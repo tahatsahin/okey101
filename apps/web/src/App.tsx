@@ -3,6 +3,8 @@ import "./App.css";
 import { socket } from "./socket.ts";
 import type { ServerGameStatePayload } from "./types.ts";
 import type { Tile, TableMeldTile } from "@okey/shared";
+import { findBestTileGrouping } from "../../server/src/game/groupingAgent.ts";
+import { validateMeldFromHand } from "../../server/src/game/validate.ts";
 
 type JoinAck =
   | { ok: true; playerId: string; roomId: string; token: string }
@@ -42,19 +44,6 @@ function topOfPile(pile: Tile[] | undefined): Tile | null {
 
 function tokenKey(roomId: string) {
   return `okey101_token:${roomId}`;
-}
-
-const COLOR_ORDER = ["red", "black", "blue", "yellow"] as const;
-
-function sortKeyForTile(t: Tile, okey: { color: string; value: number }) {
-  const resolved =
-    t.kind === "fakeJoker"
-      ? { color: okey.color, value: okey.value }
-      : { color: t.color, value: t.value };
-  return {
-    colorIndex: COLOR_ORDER.indexOf(resolved.color as (typeof COLOR_ORDER)[number]),
-    value: resolved.value
-  };
 }
 
 /* ── Position helpers ─────────────────────────────────── */
@@ -622,11 +611,6 @@ function GameBoard({
     clearBuilder();
   }
 
-  function resolvedKey(t: Tile) {
-    if (t.kind === "fakeJoker") return { color: state.okey.color, value: state.okey.value };
-    return { color: t.color, value: t.value };
-  }
-
   function layoutOrder(orderIds: string[]) {
     const perRow = Math.max(1, Math.floor((handSize.w + TILE_GAP) / (TILE_W + TILE_GAP)));
     const next: Record<string, { x: number; y: number }> = {};
@@ -641,49 +625,92 @@ function GameBoard({
     return next;
   }
 
-  function applyOrder(orderIds: string[]) {
-    clearBuilder();
+  function applyGrouping(groupIds: string[][], orderIds: string[]) {
+    setSelectedIds([]);
+    setLayoffTargetId(null);
+    setMeldGroups(groupIds);
     setTilePositions((prev) => ({ ...prev, ...layoutOrder(orderIds) }));
     onReorder(orderIds);
   }
 
   function sortNormal() {
-    const ordered = [...state.yourHand]
-      .sort((a, b) => {
-        const ka = sortKeyForTile(a, state.okey);
-        const kb = sortKeyForTile(b, state.okey);
-        if (ka.colorIndex !== kb.colorIndex) return ka.colorIndex - kb.colorIndex;
-        if (ka.value !== kb.value) return ka.value - kb.value;
-        if (a.kind !== b.kind) return a.kind === "fakeJoker" ? 1 : -1;
-        return a.id.localeCompare(b.id);
-      })
-      .map((t) => t.id);
-    applyOrder(ordered);
+    const grouped = findBestTileGrouping(state.yourHand, state.okey);
+    const groupIds = grouped.groups.map((group) => group.tileIds);
+    const unused = grouped.unusedTileIds.slice();
+    const groupedOrdered = grouped.groups.flatMap((group) => group.tileIds);
+    applyGrouping(groupIds, [...unused, ...groupedOrdered]);
   }
 
   function sortPairs() {
-    const groups = new Map<string, Tile[]>();
-    for (const t of state.yourHand) {
-      const r = resolvedKey(t);
-      const key = `${r.color}-${r.value}`;
-      const list = groups.get(key) ?? [];
-      list.push(t);
-      groups.set(key, list);
+    const indexed = state.yourHand.map((tile, index) => ({ tile, index }));
+    const pairCandidates: { mask: number; score: number; ids: string[] }[] = [];
+    for (let i = 0; i < indexed.length; i++) {
+      for (let j = i + 1; j < indexed.length; j++) {
+        const a = indexed[i]!.tile;
+        const b = indexed[j]!.tile;
+        const vr = validateMeldFromHand([a, b], state.okey);
+        if (!vr.valid || vr.type !== "pair") continue;
+        pairCandidates.push({
+          mask: (1 << i) | (1 << j),
+          score: tileValueForSum(a, state.okey) + tileValueForSum(b, state.okey),
+          ids: [a.id, b.id]
+        });
+      }
     }
-    const orderedGroups = [...groups.entries()].sort(([ka, va], [kb, vb]) => {
-      const countDiff = vb.length - va.length;
-      if (countDiff !== 0) return countDiff;
-      const [ca, vaStr] = ka.split("-");
-      const [cb, vbStr] = kb.split("-");
-      const aColor = COLOR_ORDER.indexOf(ca as (typeof COLOR_ORDER)[number]);
-      const bColor = COLOR_ORDER.indexOf(cb as (typeof COLOR_ORDER)[number]);
-      if (aColor !== bColor) return aColor - bColor;
-      return Number(vaStr) - Number(vbStr);
-    });
-    const ordered = orderedGroups.flatMap(([, tiles]) =>
-      tiles.sort((a, b) => a.id.localeCompare(b.id)).map((t) => t.id)
-    );
-    applyOrder(ordered);
+
+    const fullMask = (1 << indexed.length) - 1;
+    const memo = new Map<number, { pairCount: number; score: number; masks: number[] }>();
+    const byMask = new Map(pairCandidates.map((candidate) => [candidate.mask, candidate]));
+
+    function betterPairState(
+      a: { pairCount: number; score: number; masks: number[] },
+      b: { pairCount: number; score: number; masks: number[] }
+    ) {
+      if (a.pairCount !== b.pairCount) return a.pairCount - b.pairCount;
+      if (a.score !== b.score) return a.score - b.score;
+      return b.masks.length - a.masks.length;
+    }
+
+    function solvePairs(mask: number): { pairCount: number; score: number; masks: number[] } {
+      const cached = memo.get(mask);
+      if (cached) return cached;
+      let first = -1;
+      for (let i = 0; i < indexed.length; i++) {
+        if ((mask & (1 << i)) !== 0) {
+          first = i;
+          break;
+        }
+      }
+      if (first === -1) {
+        const base = { pairCount: 0, score: 0, masks: [] };
+        memo.set(mask, base);
+        return base;
+      }
+
+      let best = solvePairs(mask & ~(1 << first));
+      for (const candidate of pairCandidates) {
+        if ((candidate.mask & (1 << first)) === 0) continue;
+        if ((candidate.mask & mask) !== candidate.mask) continue;
+        const tail = solvePairs(mask & ~candidate.mask);
+        const next = {
+          pairCount: tail.pairCount + 1,
+          score: tail.score + candidate.score,
+          masks: [candidate.mask, ...tail.masks]
+        };
+        if (betterPairState(next, best) > 0) best = next;
+      }
+
+      memo.set(mask, best);
+      return best;
+    }
+
+    const pairSolve = solvePairs(fullMask);
+    const pairMasks = pairSolve.masks;
+    const usedMask = pairMasks.reduce((acc, mask) => acc | mask, 0);
+    const groupIds = pairMasks.map((mask) => byMask.get(mask)!.ids);
+    const unused = indexed.filter((_, index) => (usedMask & (1 << index)) === 0).map(({ tile }) => tile.id);
+    const groupedOrdered = groupIds.flat();
+    applyGrouping(groupIds, [...unused, ...groupedOrdered]);
   }
   function submitOpenMeld() {
     const allMelds =
