@@ -29,12 +29,12 @@ export function registerSocketHandlers(io: Server) {
       const parsed = C2S.roomJoin.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
-      const { roomId, name, token } = parsed.data;
+      const { roomId, name, token, seatIndex } = parsed.data;
 
       const joinArgs =
         token === undefined
-          ? { roomId, socketId: socket.id, name }
-          : { roomId, socketId: socket.id, name, token };
+          ? { roomId, socketId: socket.id, name, seatIndex }
+          : { roomId, socketId: socket.id, name, token, seatIndex };
 
       const result = roomRegistry.joinRoom(joinArgs);
       if (!result.ok) return ack?.({ ok: false, error: result.error });

@@ -49,7 +49,10 @@ function tokenKey(roomId: string) {
 
 /** Given the full player order and who "you" are, return [bottom, right, top, left] player ids */
 function seatOrder(players: { playerId: string }[], youId: string | null): string[] {
-  const ids = players.map((p) => p.playerId);
+  const ids = players
+    .slice()
+    .sort((a: any, b: any) => (a.seatIndex ?? 99) - (b.seatIndex ?? 99))
+    .map((p) => p.playerId);
   const myIdx = ids.indexOf(youId ?? "");
   if (myIdx === -1) return ids; // fallback
   return [0, 1, 2, 3].map((offset) => ids[(myIdx + offset) % ids.length]!);
@@ -160,9 +163,13 @@ export default function App() {
   }, [serverState, playerId]);
 
   /* ── socket emitters ── */
-  function join() {
+  function join(seatIndex?: number) {
     const token = sessionStorage.getItem(tokenKey(roomId)) ?? undefined;
-    socket.emit(C2S_EVENT.roomJoin, { roomId, name, token }, (ack: JoinAck) => {
+    if (!token && seatIndex === undefined) {
+      alert("Pick a seat to join.");
+      return;
+    }
+    socket.emit(C2S_EVENT.roomJoin, { roomId, name, token, seatIndex }, (ack: JoinAck) => {
       if (!ack.ok) return alert(`Join failed: ${ack.error}`);
       setJoined(true);
       setPlayerId(ack.playerId);
@@ -242,11 +249,21 @@ export default function App() {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Your name"
-            onKeyDown={(e) => e.key === "Enter" && join()}
           />
-          <button onClick={join} disabled={!connected || !name.trim()}>
-            {connected ? "Join Room" : "Connecting…"}
-          </button>
+          <div className="join-seats">
+            {Array.from({ length: 4 }).map((_, idx) => (
+              <button
+                key={`join-seat-${idx}`}
+                onClick={() => join(idx)}
+                disabled={!connected || !name.trim()}
+              >
+                Seat {idx + 1}
+              </button>
+            ))}
+          </div>
+          <div className="join-hint">
+            {connected ? "Pick a seat to join." : "Connecting…"}
+          </div>
         </div>
       </div>
     );
@@ -256,38 +273,101 @@ export default function App() {
   if (!gs || gs.phase === "lobby") {
     const teamMode = gs?.options?.teamMode ?? false;
     const isHost = gs?.players?.[0]?.playerId === playerId;
+    const seats = Array.from({ length: 4 }).map((_, idx) => {
+      const player = gs?.players?.find((p) => p.seatIndex === idx) ?? null;
+      return { idx, player };
+    });
     return (
       <div className="join-screen">
         <div className="lobby-card">
           <h2>Lobby — {roomId}</h2>
-          <div className="lobby-players">
-            {(gs?.players ?? []).map((p, idx) => {
-              const teamId = teamMode ? (p.teamId ?? (idx % 2 === 0 ? "A" : "B")) : null;
-              return (
-              <div
-                key={p.playerId}
-                className={`lobby-player ${p.ready ? "ready" : ""} ${p.playerId === playerId ? "you" : ""}`}
-              >
-                <div className="avatar-placeholder" />
-                <span>
-                  {p.name}
-                  {p.isBot ? " (bot)" : ""}
-                  {p.playerId === playerId ? " (you)" : ""}
-                  {teamId ? ` — Team ${teamId}` : ""}
-                </span>
-                <span className={`ready-badge ${p.ready ? "on" : ""}`}>
-                  {p.ready ? "✓" : "…"}
-                </span>
+          {teamMode ? (
+            <div className="lobby-teams">
+              <div className="team-column">
+                <div className="team-title">Team A</div>
+                {[0, 2].map((idx) => {
+                  const seat = seats[idx]!;
+                  const p = seat.player;
+                  return (
+                    <div
+                      key={`seat-${idx}`}
+                      className={`lobby-seat ${p ? "filled" : "empty"} ${p?.ready ? "ready" : ""} ${p?.playerId === playerId ? "you" : ""}`}
+                    >
+                      <div className="avatar-placeholder" />
+                      {p ? (
+                        <>
+                          <span>
+                            {p.name}
+                            {p.isBot ? " (bot)" : ""}
+                            {p.playerId === playerId ? " (you)" : ""}
+                          </span>
+                          <span className={`ready-badge ${p.ready ? "on" : ""}`}>
+                            {p.ready ? "✓" : "…"}
+                          </span>
+                        </>
+                      ) : (
+                        <span>Empty Seat</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-              );
-            })}
-            {Array.from({ length: 4 - (gs?.players.length ?? 0) }).map((_, i) => (
-              <div key={`empty-${i}`} className="lobby-player empty">
-                <div className="avatar-placeholder" />
-                <span>Waiting…</span>
+              <div className="team-column">
+                <div className="team-title">Team B</div>
+                {[1, 3].map((idx) => {
+                  const seat = seats[idx]!;
+                  const p = seat.player;
+                  return (
+                    <div
+                      key={`seat-${idx}`}
+                      className={`lobby-seat ${p ? "filled" : "empty"} ${p?.ready ? "ready" : ""} ${p?.playerId === playerId ? "you" : ""}`}
+                    >
+                      <div className="avatar-placeholder" />
+                      {p ? (
+                        <>
+                          <span>
+                            {p.name}
+                            {p.isBot ? " (bot)" : ""}
+                            {p.playerId === playerId ? " (you)" : ""}
+                          </span>
+                          <span className={`ready-badge ${p.ready ? "on" : ""}`}>
+                            {p.ready ? "✓" : "…"}
+                          </span>
+                        </>
+                      ) : (
+                        <span>Empty Seat</span>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
-            ))}
-          </div>
+            </div>
+          ) : (
+            <div className="lobby-seats">
+              {seats.map(({ idx, player: p }) => (
+                <div
+                  key={`seat-${idx}`}
+                  className={`lobby-seat ${p ? "filled" : "empty"} ${p?.ready ? "ready" : ""} ${p?.playerId === playerId ? "you" : ""}`}
+                >
+                  <div className="avatar-placeholder" />
+                  {p ? (
+                    <>
+                      <span>
+                        {p.name}
+                        {p.isBot ? " (bot)" : ""}
+                        {p.playerId === playerId ? " (you)" : ""}
+                      </span>
+                      <span className={`ready-badge ${p.ready ? "on" : ""}`}>
+                        {p.ready ? "✓" : "…"}
+                      </span>
+                    </>
+                  ) : (
+                    <span>Empty Seat</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
           <label className="lobby-toggle">
             <input
               type="checkbox"
@@ -417,7 +497,7 @@ export default function App() {
             )}
           </div>
 
-          <div className="round-scores">
+          <div className={`round-scores ${teamMode ? "team-mode" : ""}`}>
             <div className="score-row score-header">
               <div>Round</div>
               {!teamMode

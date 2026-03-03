@@ -88,6 +88,32 @@ body {
   margin-top: 4px;
 }
 .join-card button:hover { background: #00acc1; }
+.join-seats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+.join-seats button {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.08);
+  color: #fff;
+  font-weight: 600;
+}
+.join-seats button:hover { background: rgba(255,255,255,0.14); }
+.join-seats button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.join-hint {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
 
 .lobby-toggle {
   display: flex;
@@ -126,6 +152,9 @@ body {
   border-radius: 8px;
   background: rgba(255,255,255,0.06);
 }
+.round-scores.team-mode .score-row {
+  grid-template-columns: 70px repeat(2, minmax(60px, 1fr));
+}
 .score-row.score-header {
   font-weight: 700;
   background: rgba(0,0,0,0.35);
@@ -157,6 +186,43 @@ body {
 }
 .lobby-player.you { background: rgba(0,188,212,0.15); border: 1px solid rgba(0,188,212,0.3); }
 .lobby-player.empty { opacity: 0.3; }
+.lobby-seats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.lobby-seat {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.08);
+  font-size: 0.85rem;
+}
+.lobby-seat.empty { opacity: 0.5; }
+.lobby-seat.you { background: rgba(0,188,212,0.15); border: 1px solid rgba(0,188,212,0.3); }
+.lobby-teams {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 20px;
+}
+.team-column {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.team-title {
+  font-weight: 700;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  opacity: 0.8;
+}
 .avatar-placeholder {
   width: 40px; height: 40px;
   border-radius: 50%;

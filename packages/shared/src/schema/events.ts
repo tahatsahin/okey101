@@ -42,7 +42,8 @@ const LobbyPlayerPublic = z.object({
   name: z.string().min(1),
   ready: z.boolean(),
   isBot: z.boolean().optional(),
-  teamId: z.enum(["A", "B"]).optional()
+  teamId: z.enum(["A", "B"]).optional(),
+  seatIndex: z.number().int().min(0).max(3).optional()
 });
 
 const GameOptions = z.object({
@@ -120,6 +121,7 @@ export const C2S = {
     roomId: z.string().min(3).max(32),
     name: z.string().min(1).max(24),
     token: z.string().min(10).optional(),
+    seatIndex: z.number().int().min(0).max(3).optional(),
   }),
   roomReady: z.object({ ready: z.boolean() }),
   roomSetOptions: z.object({ teamMode: z.boolean() }),

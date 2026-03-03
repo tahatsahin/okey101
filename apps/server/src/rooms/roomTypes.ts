@@ -8,6 +8,7 @@ export type LobbyPlayer = {
     ready: boolean;
     isBot?: boolean;
     teamId?: "A" | "B";
+    seatIndex?: number;
 };
 
 export type RoomState = {

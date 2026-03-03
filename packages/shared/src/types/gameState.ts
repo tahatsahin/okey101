@@ -6,6 +6,7 @@ export type LobbyPlayerPublic = {
   ready: boolean;
   isBot?: boolean;
   teamId?: TeamId;
+  seatIndex?: number;
 };
 
 export type GameOptions = {

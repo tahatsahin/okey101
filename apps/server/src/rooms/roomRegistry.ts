@@ -15,11 +15,11 @@ type RoomRuntime = {
   playerIdToToken: Map<PlayerId, string>;
 };
 
-type JoinArgs = { roomId: RoomId; socketId: string; name: string; token?: string };
+type JoinArgs = { roomId: RoomId; socketId: string; name: string; token?: string; seatIndex?: number };
 
 type JoinResult =
   | { ok: true; playerId: PlayerId; roomId: RoomId; token: string }
-  | { ok: false; error: "ROOM_FULL" | "NAME_TAKEN" };
+  | { ok: false; error: "ROOM_FULL" | "NAME_TAKEN" | "SEAT_TAKEN" | "INVALID_SEAT" };
 
 type SimpleResult = { ok: true } | { ok: false; error: string };
 
@@ -33,6 +33,7 @@ export class RoomRegistry {
   }
 
   private syncLobbyState(room: RoomRuntime) {
+    room.players.sort((a, b) => (a.seatIndex ?? 99) - (b.seatIndex ?? 99));
     this.assignTeams(room);
     room.state = {
       phase: "lobby",
@@ -42,7 +43,8 @@ export class RoomRegistry {
         name: p.name,
         ready: p.ready,
         isBot: p.isBot,
-        teamId: p.teamId
+        teamId: p.teamId,
+        seatIndex: p.seatIndex
       })),
       options: room.options
     };
@@ -146,6 +148,17 @@ export class RoomRegistry {
 
     if (room.players.length >= 4) return { ok: false, error: "ROOM_FULL" };
     if (room.players.some((p) => p.name === args.name)) return { ok: false, error: "NAME_TAKEN" };
+    const taken = new Set<number>(room.players.map((p) => p.seatIndex).filter((v): v is number => typeof v === "number"));
+    const desiredSeat = args.seatIndex;
+    let seatIndex: number | undefined;
+    if (typeof desiredSeat === "number") {
+      if (desiredSeat < 0 || desiredSeat > 3) return { ok: false, error: "INVALID_SEAT" };
+      if (taken.has(desiredSeat)) return { ok: false, error: "SEAT_TAKEN" };
+      seatIndex = desiredSeat;
+    } else {
+      seatIndex = [0, 1, 2, 3].find((idx) => !taken.has(idx));
+      if (seatIndex === undefined) return { ok: false, error: "ROOM_FULL" };
+    }
 
     const playerId = randomUUID();
     const token = randomUUID() + randomUUID(); // cheap long token
@@ -155,7 +168,8 @@ export class RoomRegistry {
       name: args.name,
       socketId: args.socketId,
       ready: false,
-      isBot: false
+      isBot: false,
+      seatIndex
     });
 
     room.tokenToPlayerId.set(token, playerId);
@@ -344,6 +358,10 @@ export class RoomRegistry {
     if (meta.playerId !== hostId) return { ok: false, error: "NOT_HOST" };
     if (room.players.length >= 4) return { ok: false, error: "ROOM_FULL" };
 
+    const taken = new Set<number>(room.players.map((p) => p.seatIndex).filter((v): v is number => typeof v === "number"));
+    const seatIndex = [0, 1, 2, 3].find((idx) => !taken.has(idx));
+    if (seatIndex === undefined) return { ok: false, error: "ROOM_FULL" };
+
     const botId = randomUUID();
     const botCount = room.players.filter((p) => p.isBot).length + 1;
     room.players.push({
@@ -351,7 +369,8 @@ export class RoomRegistry {
       name: `Bot ${botCount}`,
       socketId: "",
       ready: true,
-      isBot: true
+      isBot: true,
+      seatIndex
     });
 
     this.syncLobbyState(room);
