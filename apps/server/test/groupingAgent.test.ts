@@ -1,4 +1,4 @@
-import { findBestTileGrouping } from "../src/game/groupingAgent.js";
+import { findBestTileGrouping } from "@okey/shared";
 
 function tile(id: string, color: "red" | "black" | "blue" | "yellow", value: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13) {
   return { id, kind: "normal" as const, color, value, copy: 1 as const };

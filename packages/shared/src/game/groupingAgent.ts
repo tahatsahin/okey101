@@ -1,4 +1,5 @@
-import type { OkeyInfo, TableMeldTile, Tile, TileColor, TileId } from "@okey/shared";
+import type { OkeyInfo, Tile, TileColor, TileId } from "../types/ids.js";
+import type { TableMeldTile } from "../types/gameState.js";
 import { assignMeldTiles, validateMeldFromHand } from "./validate.js";
 import { isFakeJoker } from "./tileUtils.js";
 

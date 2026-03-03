@@ -1,4 +1,5 @@
-import type { Tile, OkeyInfo, TableMeldTile, TileColor, TileValue } from "@okey/shared";
+import type { Tile, OkeyInfo, TileColor, TileValue } from "../types/ids.js";
+import type { TableMeldTile } from "../types/gameState.js";
 import { isFakeJoker, isNormalTile } from "./tileUtils.js";
 
 type ValidateResult = { valid: boolean; type?: "run" | "set" | "pair"; reason?: string };

@@ -17,6 +17,7 @@ export const C2S_EXTRA_EVENT = {
     moveOpen: "move:open",
     moveLayoff: "move:layoff",
     moveTakeAndMeld: "move:takeAndMeld",
+    moveReorder: "move:reorder",
 };
 
 export const S2C_EXTRA_EVENT = {

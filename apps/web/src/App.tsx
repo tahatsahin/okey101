@@ -3,8 +3,7 @@ import "./App.css";
 import { socket } from "./socket.ts";
 import type { ServerGameStatePayload } from "./types.ts";
 import type { Tile, TableMeldTile } from "@okey/shared";
-import { findBestTileGrouping } from "../../server/src/game/groupingAgent.ts";
-import { validateMeldFromHand } from "../../server/src/game/validate.ts";
+import { findBestTileGrouping, validateMeldFromHand, validateLayoff, canExtendAnyMeld, C2S_EVENT, C2S_EXTRA_EVENT, S2C_EVENT } from "@okey/shared";
 
 type JoinAck =
   | { ok: true; playerId: string; roomId: string; token: string }
@@ -62,6 +61,7 @@ function TileChip({
   tile,
   selected,
   disabled,
+  hint,
   onClick,
   onDoubleClick,
   faceDown,
@@ -74,6 +74,7 @@ function TileChip({
   tile?: Tile | TableMeldTile;
   selected?: boolean;
   disabled?: boolean;
+  hint?: boolean;
   onClick?: () => void;
   onDoubleClick?: () => void;
   faceDown?: boolean;
@@ -95,6 +96,7 @@ function TileChip({
     selected ? "selected" : "",
     disabled ? "disabled" : "",
     isOkey ? "okey-tile" : "",
+    hint ? "hint" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -141,13 +143,13 @@ export default function App() {
     };
     socket.on("connect", onConnect);
     socket.on("disconnect", onDisconnect);
-    socket.on("game:state", (p: unknown) => {
+    socket.on(S2C_EVENT.gameState, (p: unknown) => {
       setServerState(p as ServerGameStatePayload);
     });
     return () => {
       socket.off("connect", onConnect);
       socket.off("disconnect", onDisconnect);
-      socket.off("game:state");
+      socket.off(S2C_EVENT.gameState);
     };
   }, []);
 
@@ -160,7 +162,7 @@ export default function App() {
   /* ── socket emitters ── */
   function join() {
     const token = sessionStorage.getItem(tokenKey(roomId)) ?? undefined;
-    socket.emit("room:join", { roomId, name, token }, (ack: JoinAck) => {
+    socket.emit(C2S_EVENT.roomJoin, { roomId, name, token }, (ack: JoinAck) => {
       if (!ack.ok) return alert(`Join failed: ${ack.error}`);
       setJoined(true);
       setPlayerId(ack.playerId);
@@ -168,52 +170,52 @@ export default function App() {
     });
   }
   function setReady(r: boolean) {
-    socket.emit("room:ready", { ready: r }, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.roomReady, { ready: r }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function startGame() {
-    socket.emit("game:start", {}, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.gameStart, {}, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function addBot() {
-    socket.emit("room:addBot", {}, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.roomAddBot, {}, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function draw(source: "deck" | "prevDiscard") {
-    socket.emit("move:draw", { source }, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.moveDraw, { source }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function discard(tileId: string) {
-    socket.emit("move:discard", { tileId }, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.moveDiscard, { tileId }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function returnDiscard() {
-    socket.emit("move:returnDiscard", {}, (a: SimpleAck) => {
+    socket.emit(C2S_EVENT.moveReturnDiscard, {}, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function openMeld(melds: string[][]) {
-    socket.emit("move:open", { melds }, (a: SimpleAck) => {
+    socket.emit(C2S_EXTRA_EVENT.moveOpen, { melds }, (a: SimpleAck) => {
       if (!a.ok) alert(`Open failed: ${a.error}`);
     });
   }
   function layoff(tableMeldId: string, tileIds: string[]) {
-    socket.emit("move:layoff", { tableMeldId, tileIds }, (a: SimpleAck) => {
+    socket.emit(C2S_EXTRA_EVENT.moveLayoff, { tableMeldId, tileIds }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function takeAndMeld(fromPlayerId: string, melds: string[][]) {
-    socket.emit("move:takeAndMeld", { fromPlayerId, melds }, (a: SimpleAck) => {
+    socket.emit(C2S_EXTRA_EVENT.moveTakeAndMeld, { fromPlayerId, melds }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
   function reorderHand(tileIds: string[]) {
-    socket.emit("move:reorder", { tileIds }, (a: SimpleAck) => {
+    socket.emit(C2S_EXTRA_EVENT.moveReorder, { tileIds }, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
@@ -489,6 +491,25 @@ function GameBoard({
     openedMode === "pairs"
       ? state.yourHand.reduce((sum, t) => sum + tileValueForSum(t, state.okey), 0)
       : 0;
+
+  const selectedTilesForLayoff = useMemo(() => {
+    return selectedIds
+      .map((id) => state.yourHand.find((t) => t.id === id))
+      .filter((t): t is Tile => !!t);
+  }, [selectedIds, state.yourHand]);
+
+  const extendableIds = useMemo(() => {
+    if (!isMyTurn) return new Set<string>();
+    if (state.turnStep !== "mustDiscard") return new Set<string>();
+    if (openedMode === "none") return new Set<string>();
+    if (tableMelds.length === 0) return new Set<string>();
+    const melds = tableMelds.map((m) => m.tiles as unknown as Tile[]);
+    const ids = new Set<string>();
+    for (const tile of state.yourHand) {
+      if (canExtendAnyMeld(melds, tile, state.okey)) ids.add(tile.id);
+    }
+    return ids;
+  }, [isMyTurn, openedMode, state.okey, state.turnStep, state.yourHand, tableMelds]);
 
   useEffect(() => {
     if (!handRef.current) return;
@@ -941,24 +962,35 @@ function GameBoard({
         {/* Table melds */}
         {tableMelds.length > 0 && (
           <div className="table-melds">
-            {tableMelds.map((m) => (
-              <div
-                key={m.meldId}
-                className={`meld-group ${layoffTargetId === m.meldId ? "selected" : ""}`}
-                onClick={() =>
-                  isMyTurn
-                    ? setLayoffTargetId(
-                        layoffTargetId === m.meldId ? null : m.meldId
-                      )
-                    : undefined
-                }
-                title={`by ${playerMap[m.playerId]?.name ?? m.playerId}`}
-              >
-                {m.tiles.map((t) => (
-                  <TileChip key={t.id} tile={t} disabled okey={state.okey} />
-                ))}
-              </div>
-            ))}
+            {tableMelds.map((m) => {
+              const canLayoffHere =
+                isMyTurn &&
+                state.turnStep === "mustDiscard" &&
+                openedMode !== "none" &&
+                selectedTilesForLayoff.length > 0 &&
+                validateLayoff(m.tiles as unknown as Tile[], selectedTilesForLayoff, state.okey).ok;
+              return (
+                <div
+                  key={m.meldId}
+                  className={`meld-group ${canLayoffHere ? "legal" : ""} ${layoffTargetId === m.meldId ? "selected" : ""}`}
+                  onClick={() =>
+                    isMyTurn
+                      ? setLayoffTargetId(
+                          layoffTargetId === m.meldId ? null : m.meldId
+                        )
+                      : undefined
+                  }
+                  title={`by ${playerMap[m.playerId]?.name ?? m.playerId}`}
+                >
+                  <div className="meld-owner">{playerMap[m.playerId]?.name ?? m.playerId}</div>
+                  <div className="meld-tiles">
+                    {m.tiles.map((t) => (
+                      <TileChip key={t.id} tile={t} disabled okey={state.okey} />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -1159,6 +1191,7 @@ function GameBoard({
                   tile={tile}
                   selected={selectedIds.includes(tile.id)}
                   disabled={false}
+                  hint={extendableIds.has(tile.id)}
                   onClick={() => toggle(tile.id)}
                   onDoubleClick={() => {
                     if (isMyTurn && state.turnStep === "mustDiscard") {

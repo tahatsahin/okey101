@@ -1,6 +1,7 @@
 import { io, type Socket } from "socket.io-client";
 import readline from "node:readline";
 import type { GameStateClient, Tile } from "@okey/shared";
+import { C2S_EVENT, S2C_EVENT } from "@okey/shared";
 
 type JoinAck =
   | { ok: true; playerId: string; roomId: string; token: string }
@@ -23,14 +24,14 @@ socket.on("connect", () => {
   joinRoom();
 });
 
-socket.on("game:state", (payload: unknown) => {
+socket.on(S2C_EVENT.gameState, (payload: unknown) => {
   last = payload as any;
   log(`game:state v=${last?.version ?? "?"}`);
   pretty(last?.state);
 });
 
 function joinRoom() {
-  socket.emit("room:join", { roomId: ROOM_ID, name: NAME, token: myToken }, (ack: JoinAck) => {
+  socket.emit(C2S_EVENT.roomJoin, { roomId: ROOM_ID, name: NAME, token: myToken }, (ack: JoinAck) => {
     log(`join ack: ${JSON.stringify(ack)}`);
     if (ack.ok) {
       myToken = ack.token;
@@ -84,16 +85,16 @@ rl.on("line", (line) => {
     case "ready": {
       const ready = arg === "on" ? true : arg === "off" ? false : null;
       if (ready == null) return log("usage: ready on|off");
-      socket.emit("room:ready", { ready }, (ack: SimpleAck) => log(`ready ack: ${JSON.stringify(ack)}`));
+      socket.emit(C2S_EVENT.roomReady, { ready }, (ack: SimpleAck) => log(`ready ack: ${JSON.stringify(ack)}`));
       break;
     }
 
     case "start":
-      socket.emit("game:start", {}, (ack: SimpleAck) => log(`start ack: ${JSON.stringify(ack)}`));
+      socket.emit(C2S_EVENT.gameStart, {}, (ack: SimpleAck) => log(`start ack: ${JSON.stringify(ack)}`));
       break;
 
     case "draw":
-      socket.emit("move:draw", {}, (ack: SimpleAck) => log(`draw ack: ${JSON.stringify(ack)}`));
+      socket.emit(C2S_EVENT.moveDraw, { source: "deck" }, (ack: SimpleAck) => log(`draw ack: ${JSON.stringify(ack)}`));
       break;
 
     case "hand": {
@@ -106,7 +107,7 @@ rl.on("line", (line) => {
 
     case "discard": {
       if (!arg) return log("usage: discard <tileId>");
-      socket.emit("move:discard", { tileId: arg }, (ack: SimpleAck) => log(`discard ack: ${JSON.stringify(ack)}`));
+      socket.emit(C2S_EVENT.moveDiscard, { tileId: arg }, (ack: SimpleAck) => log(`discard ack: ${JSON.stringify(ack)}`));
       break;
     }
 

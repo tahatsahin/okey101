@@ -1,7 +1,7 @@
-import type { Tile, TileColor, TileValue, OkeyInfo } from "@okey/shared";
+import type { Tile, TileColor, TileValue, OkeyInfo } from "../types/ids.js";
 
 export const COLORS: TileColor[] = ["red", "black", "blue", "yellow"];
-export const VALUES: TileValue[] = [1,2,3,4,5,6,7,8,9,10,11,12,13];
+export const VALUES: TileValue[] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13];
 
 export function nextValue(v: TileValue): TileValue {
   return (v === 13 ? 1 : ((v + 1) as TileValue));

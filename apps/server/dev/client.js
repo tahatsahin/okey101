@@ -1,5 +1,6 @@
 import { io } from "socket.io-client";
 import readline from "node:readline";
+import { C2S_EVENT, S2C_EVENT } from "@okey/shared";
 const SERVER_URL = process.env.SERVER_URL ?? "http://localhost:3001";
 const ROOM_ID = process.env.ROOM_ID ?? "room1";
 const NAME = process.env.NAME ?? `p-${Math.floor(Math.random() * 1000)}`;
@@ -11,13 +12,13 @@ socket.on("connect", () => {
     log(`connected socket.id=${socket.id}`);
     joinRoom();
 });
-socket.on("game:state", (payload) => {
+socket.on(S2C_EVENT.gameState, (payload) => {
     last = payload;
     log(`game:state v=${last?.version ?? "?"}`);
     pretty(last?.state);
 });
 function joinRoom() {
-    socket.emit("room:join", { roomId: ROOM_ID, name: NAME, token: myToken }, (ack) => {
+    socket.emit(C2S_EVENT.roomJoin, { roomId: ROOM_ID, name: NAME, token: myToken }, (ack) => {
         log(`join ack: ${JSON.stringify(ack)}`);
         if (ack.ok) {
             myToken = ack.token;
@@ -66,14 +67,14 @@ rl.on("line", (line) => {
             const ready = arg === "on" ? true : arg === "off" ? false : null;
             if (ready == null)
                 return log("usage: ready on|off");
-            socket.emit("room:ready", { ready }, (ack) => log(`ready ack: ${JSON.stringify(ack)}`));
+            socket.emit(C2S_EVENT.roomReady, { ready }, (ack) => log(`ready ack: ${JSON.stringify(ack)}`));
             break;
         }
         case "start":
-            socket.emit("game:start", {}, (ack) => log(`start ack: ${JSON.stringify(ack)}`));
+            socket.emit(C2S_EVENT.gameStart, {}, (ack) => log(`start ack: ${JSON.stringify(ack)}`));
             break;
         case "draw":
-            socket.emit("move:draw", {}, (ack) => log(`draw ack: ${JSON.stringify(ack)}`));
+            socket.emit(C2S_EVENT.moveDraw, { source: "deck" }, (ack) => log(`draw ack: ${JSON.stringify(ack)}`));
             break;
         case "hand": {
             const s = last?.state;
@@ -87,7 +88,7 @@ rl.on("line", (line) => {
         case "discard": {
             if (!arg)
                 return log("usage: discard <tileId>");
-            socket.emit("move:discard", { tileId: arg }, (ack) => log(`discard ack: ${JSON.stringify(ack)}`));
+            socket.emit(C2S_EVENT.moveDiscard, { tileId: arg }, (ack) => log(`discard ack: ${JSON.stringify(ack)}`));
             break;
         }
         case "quit":

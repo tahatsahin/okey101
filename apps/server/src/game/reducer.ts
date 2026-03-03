@@ -1,6 +1,6 @@
 import type { GameStateServer, HandEndState, HandResult, Penalty, PlayerId, TileId, Tile, TurnStateServer } from "@okey/shared";
 import { startTurnGame } from "./gameLogic.js";
-import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld, validateMeldSet, assignMeldTiles } from "./validate.js";
+import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld, validateMeldSet, assignMeldTiles } from "@okey/shared";
 import { randomUUID } from "crypto";
 
 const MAX_ROUNDS = 11;

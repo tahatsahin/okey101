@@ -410,7 +410,9 @@ body {
 
 .meld-group {
   display: inline-flex;
-  gap: 2px;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
   padding: 4px 6px;
   background: rgba(0,0,0,0.25);
   border-radius: 8px;
@@ -420,6 +422,17 @@ body {
 }
 .meld-group:hover { border-color: rgba(255,255,255,0.3); }
 .meld-group.selected { border-color: var(--tile-selected); box-shadow: 0 0 8px rgba(0,188,212,0.4); }
+.meld-group.legal { border-color: rgba(76,175,80,0.6); box-shadow: 0 0 8px rgba(76,175,80,0.25); }
+.meld-owner {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.7;
+}
+.meld-tiles {
+  display: inline-flex;
+  gap: 2px;
+}
 .meld-group .tile { width: 30px; height: 42px; font-size: 0.85rem; cursor: default; }
 .meld-group .tile:hover { transform: none; }
 
@@ -453,6 +466,10 @@ body {
 }
 .tile.disabled { cursor: default; }
 .tile.disabled:hover { transform: none; box-shadow: 0 2px 4px rgba(0,0,0,0.15); }
+.tile.hint {
+  border-color: rgba(76,175,80,0.75);
+  box-shadow: 0 0 8px rgba(76,175,80,0.4);
+}
 
 .tile-value {
   font-size: 1.2rem;

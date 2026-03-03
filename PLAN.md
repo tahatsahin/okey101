@@ -34,8 +34,8 @@ Last updated: 2026-03-03
 
 ## Phase 3: UX & Gameplay Loop
 - (x) Show opening mode and whether player has opened.
-- ( ) Table meld UX: show meld owner and resolved joker values.
-- ( ) Highlight legal layoffs and extendable tiles.
+- (x) Table meld UX: show meld owner and resolved joker values.
+- (x) Highlight legal layoffs and extendable tiles.
 - (x) End-of-hand summary UI with scores and penalties.
 - (x) Discard piles positioned between adjacent players (seat-relative layout).
 - (x) Drag-and-drop discard/draw using deck and correct discard pile targets.
@@ -47,8 +47,8 @@ Last updated: 2026-03-03
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.
-- ( ) Align event names using `C2S_EVENT`/`C2S_EXTRA_EVENT` constants consistently.
-- ( ) Add Zod schema for `GameStateClient` payloads.
+- (x) Align event names using `C2S_EVENT`/`C2S_EXTRA_EVENT` constants consistently.
+- (x) Add Zod schema for `GameStateClient` payloads.
 - (x) Tests: opening >=101 and 21-tile exception.
 - (x) Tests: discard-take must be melded.
 - (x) Tests: mixed-color run rejection.

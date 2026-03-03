@@ -1,5 +1,5 @@
 import assert from 'assert';
-import { makeDeck, pickIndicatorAndOkey, dealHands } from '../src/game/tileUtils.js';
+import { makeDeck, pickIndicatorAndOkey, dealHands } from '@okey/shared';
 
 function simpleAssert(condition: boolean, msg: string) {
   if (!condition) {

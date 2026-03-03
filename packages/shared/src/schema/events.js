@@ -1,4 +1,93 @@
 import { z } from "zod";
+// ---- shared payload schemas ----
+const TileColor = z.enum(["red", "black", "blue", "yellow"]);
+const TileValue = z.number().int().min(1).max(13);
+const TileCopy = z.union([z.literal(1), z.literal(2)]);
+const TileNormal = z.object({
+    id: z.string().min(1),
+    kind: z.literal("normal"),
+    color: TileColor,
+    value: TileValue,
+    copy: TileCopy
+});
+const TileFakeJoker = z.object({
+    id: z.string().min(1),
+    kind: z.literal("fakeJoker"),
+    copy: TileCopy
+});
+const Tile = z.discriminatedUnion("kind", [TileNormal, TileFakeJoker]);
+const OkeyInfo = z.object({
+    color: TileColor,
+    value: TileValue
+});
+const TableMeldTile = Tile.and(z.object({
+    assigned: z
+        .object({
+        color: TileColor,
+        value: TileValue
+    })
+        .optional()
+}));
+const LobbyPlayerPublic = z.object({
+    playerId: z.string().min(1),
+    name: z.string().min(1),
+    ready: z.boolean(),
+    isBot: z.boolean().optional()
+});
+const Penalty = z.object({
+    playerId: z.string().min(1),
+    points: z.number().int(),
+    reason: z.string().optional()
+});
+const HandResult = z.object({
+    reason: z.enum(["WIN", "DECK_EMPTY", "ALL_PAIRS"]),
+    winnerId: z.string().min(1).optional(),
+    penalties: z.array(Penalty)
+});
+const LobbyState = z.object({
+    phase: z.literal("lobby"),
+    roomId: z.string().min(1),
+    players: z.array(LobbyPlayerPublic)
+});
+const TurnStateClient = z.object({
+    phase: z.literal("turn"),
+    roomId: z.string().min(1),
+    players: z.array(LobbyPlayerPublic),
+    currentPlayerId: z.string().min(1),
+    turnStep: z.enum(["mustDraw", "mustDiscard", "mustMeldDiscard"]),
+    takenDiscard: z
+        .object({
+        fromPlayerId: z.string().min(1),
+        tile: Tile
+    })
+        .optional(),
+    openedBy: z.record(z.string().min(1), z.enum(["none", "runsSets", "pairs"])),
+    dealerIndex: z.number().int(),
+    deckCount: z.number().int().nonnegative(),
+    discardPiles: z.record(z.string().min(1), z.array(Tile)),
+    yourHand: z.array(Tile),
+    otherHandCounts: z.record(z.string().min(1), z.number().int().nonnegative()),
+    indicator: Tile,
+    okey: OkeyInfo,
+    tableMelds: z.array(z.object({
+        meldId: z.string().min(1),
+        playerId: z.string().min(1),
+        tiles: z.array(TableMeldTile)
+    })),
+    penalties: z.array(Penalty)
+});
+const HandEndState = z.object({
+    phase: z.literal("handEnd"),
+    roomId: z.string().min(1),
+    players: z.array(LobbyPlayerPublic),
+    result: HandResult,
+    handHistory: z.array(HandResult),
+    dealerIndex: z.number().int(),
+    roundNumber: z.number().int(),
+    maxRounds: z.number().int(),
+    matchOver: z.boolean()
+});
+export const GameStateClientSchema = z.discriminatedUnion("phase", [LobbyState, TurnStateClient, HandEndState]);
 // ---- client -> server ----
 export const C2S = {
     roomJoin: z.object({
@@ -29,7 +118,7 @@ export const C2S_EXTRA = {
 export const S2C = {
     gameState: z.object({
         version: z.number().int().nonnegative(),
-        state: z.unknown(), // we'll tighten later
+        state: GameStateClientSchema,
         youPlayerId: z.string().optional(),
     }),
     error: z.object({ code: z.string(), message: z.string().optional() }),

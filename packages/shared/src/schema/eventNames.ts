@@ -22,6 +22,7 @@ export const C2S_EXTRA_EVENT = {
   moveOpen: "move:open",
   moveLayoff: "move:layoff",
   moveTakeAndMeld: "move:takeAndMeld",
+  moveReorder: "move:reorder",
 } as const;
 
 // new server->client events

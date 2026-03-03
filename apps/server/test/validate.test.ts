@@ -1,4 +1,4 @@
-import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld } from '../src/game/validate.js';
+import { validateMeldFromHand, validateOpeningRequirements, validateLayoff, canExtendAnyMeld } from '@okey/shared';
 
 function tile(id: string, color: any, value: any): any {
   return { id, kind: 'normal', color, value, copy: 1 };

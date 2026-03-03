@@ -1,5 +1,5 @@
 import type { Server } from "socket.io";
-import { C2S, C2S_EVENT, S2C_EVENT, C2S_EXTRA } from "@okey/shared";
+import { C2S, C2S_EVENT, S2C_EVENT, C2S_EXTRA, C2S_EXTRA_EVENT } from "@okey/shared";
 import { roomRegistry } from "./rooms/roomRegistry.js";
 import { toClientView } from "./game/gameLogic.js";
 
@@ -14,7 +14,7 @@ export function registerSocketHandlers(io: Server) {
       if (!meta) continue;
 
       const view = toClientView(state, meta.playerId);
-      io.to(socketId).emit("game:state", {
+      io.to(socketId).emit(S2C_EVENT.gameState, {
         state: view,
         version: roomRegistry.getRoomVersion(roomId),
         youPlayerId: meta.playerId
@@ -128,7 +128,7 @@ export function registerSocketHandlers(io: Server) {
 
     // --- new meld/layoff/take-and-meld handlers ---
 
-    socket.on("move:open", (payload, ack) => {
+    socket.on(C2S_EXTRA_EVENT.moveOpen, (payload, ack) => {
       const parsed = C2S_EXTRA.moveOpen.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -142,7 +142,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("move:layoff", (payload, ack) => {
+    socket.on(C2S_EXTRA_EVENT.moveLayoff, (payload, ack) => {
       const parsed = C2S_EXTRA.moveLayoff.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -156,7 +156,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("move:takeAndMeld", (payload, ack) => {
+    socket.on(C2S_EXTRA_EVENT.moveTakeAndMeld, (payload, ack) => {
       const parsed = C2S_EXTRA.moveTakeAndMeld.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
@@ -170,7 +170,7 @@ export function registerSocketHandlers(io: Server) {
       ack?.({ ok: true });
     });
 
-    socket.on("move:reorder", (payload, ack) => {
+    socket.on(C2S_EXTRA_EVENT.moveReorder, (payload, ack) => {
       const parsed = C2S_EXTRA.moveReorder.safeParse(payload);
       if (!parsed.success) return ack?.({ ok: false, error: "INVALID_PAYLOAD" });
 
