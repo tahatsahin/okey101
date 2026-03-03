@@ -117,6 +117,15 @@ function tokenKey(roomId: string) {
   return `okey101_token:${roomId}`;
 }
 
+function randomRoomId() {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  let out = "";
+  for (let i = 0; i < 6; i += 1) {
+    out += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return out;
+}
+
 /* ── Position helpers ─────────────────────────────────── */
 
 /** Given the full player order and who "you" are, return [bottom, right, top, left] player ids */
@@ -198,7 +207,7 @@ function TileChip({
 
 export default function App() {
   const [connected, setConnected] = useState(false);
-  const [roomId, setRoomId] = useState("room1");
+  const [roomId, setRoomId] = useState(() => randomRoomId());
   const [name, setName] = useState("");
   const [joined, setJoined] = useState(false);
   const [playerId, setPlayerId] = useState<string | null>(null);
