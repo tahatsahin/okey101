@@ -47,7 +47,8 @@ const LobbyPlayerPublic = z.object({
 });
 
 const GameOptions = z.object({
-  teamMode: z.boolean()
+  teamMode: z.boolean(),
+  increasingMeldLimit: z.boolean()
 });
 
 const Penalty = z.object({
@@ -83,6 +84,8 @@ const TurnStateClient = z.object({
     })
     .optional(),
   openedBy: z.record(z.string().min(1), z.enum(["none", "runsSets", "pairs"])),
+  openingLimit: z.number().int().nonnegative(),
+  notice: z.lazy(() => TurnNotice).optional(),
   dealerIndex: z.number().int(),
   deckCount: z.number().int().nonnegative(),
   discardPiles: z.record(z.string().min(1), z.array(Tile)),
@@ -113,6 +116,15 @@ const HandEndState = z.object({
   matchOver: z.boolean()
 });
 
+const TurnNotice = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("OPENING_LIMIT"),
+    playerId: z.string().min(1),
+    required: z.number().int().nonnegative(),
+    total: z.number().int().nonnegative()
+  })
+]);
+
 export const GameStateClientSchema = z.discriminatedUnion("phase", [LobbyState, TurnStateClient, HandEndState]);
 
 // ---- client -> server ----
@@ -124,7 +136,7 @@ export const C2S = {
     seatIndex: z.number().int().min(0).max(3).optional(),
   }),
   roomReady: z.object({ ready: z.boolean() }),
-  roomSetOptions: z.object({ teamMode: z.boolean() }),
+  roomSetOptions: z.object({ teamMode: z.boolean(), increasingMeldLimit: z.boolean() }),
   roomAddBot: z.object({}),
   gameStart: z.object({}),
   moveDraw: z.object({ source: z.enum(["deck", "prevDiscard"]) }),

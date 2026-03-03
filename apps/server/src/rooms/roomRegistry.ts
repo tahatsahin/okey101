@@ -118,9 +118,9 @@ export class RoomRegistry {
       room = {
         roomId,
         players: [],
-        state: { phase: "lobby", roomId, players: [], options: { teamMode: false } },
+        state: { phase: "lobby", roomId, players: [], options: { teamMode: false, increasingMeldLimit: false } },
         version: 0,
-        options: { teamMode: false },
+        options: { teamMode: false, increasingMeldLimit: false },
         tokenToPlayerId: new Map(),
         playerIdToToken: new Map()
       };

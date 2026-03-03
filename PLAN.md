@@ -46,6 +46,8 @@ Last updated: 2026-03-03
 - (x) Draw drop positioning: place drawn tile at drop location when empty.
 - (x) Team mode (2v2): lobby toggle, opposite seating, team-based scoring UI.
 - (x) Lobby seat selection: four slots with seat-specific join and team grouping.
+- (x) Increasing meld limit option with escalating opening threshold.
+- (x) Global notification when opening meld is under the limit.
 
 ## Phase 4: Quality & Cleanup
 - ( ) Consolidate duplicated deck/indicator logic into `tileUtils`.

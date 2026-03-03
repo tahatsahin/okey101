@@ -120,7 +120,12 @@ export function validateMeldSet(melds: Tile[][], okey: OkeyInfo): { ok: boolean;
   return { ok: false };
 }
 
-export function validateOpeningRequirements(melds: Tile[][], okey: OkeyInfo, fromHandOnly = true): { ok: boolean; reason?: string } {
+export function validateOpeningRequirements(
+  melds: Tile[][],
+  okey: OkeyInfo,
+  fromHandOnly = true,
+  minTotal = 101
+): { ok: boolean; reason?: string; total?: number } {
   if (melds.length === 0) return { ok: false, reason: "no melds" };
 
   // Check if this is pairs opening: all melds are pairs and count >=5
@@ -140,12 +145,12 @@ export function validateOpeningRequirements(melds: Tile[][], okey: OkeyInfo, fro
     totalTiles += m.length;
   }
 
-  if (total >= 101) return { ok: true };
+  if (total >= minTotal) return { ok: true, total };
 
   // Exception: if laying down 21 tiles at once from hand (no layoff), allow finish even if total < 101
-  if (totalTiles >= 21 && fromHandOnly) return { ok: true };
+  if (totalTiles >= 21 && fromHandOnly) return { ok: true, total };
 
-  return { ok: false, reason: `opening total ${total} < 101` };
+  return { ok: false, reason: `opening total ${total} < ${minTotal}`, total };
 }
 
 export function validateLayoff(tableMeld: Tile[], tiles: Tile[], okey: OkeyInfo): { ok: boolean; reason?: string } {

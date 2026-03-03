@@ -120,6 +120,8 @@ export function startTurnGame(prev: GameStateServer): TurnStateServer {
     turnStep: "mustDiscard",
     takenDiscard: undefined,
     openedBy: Object.fromEntries(playerIds.map((id) => [id, "none"])),
+    openingLimit: 100,
+    notice: undefined,
     handHistory: prev.phase === "handEnd" ? prev.handHistory : [],
     dealerIndex,
 
@@ -156,6 +158,7 @@ export function toClientView(state: GameStateServer, you: PlayerId): GameStateCl
     turnStep: s.turnStep,
     takenDiscard: s.takenDiscard,
     openedBy: s.openedBy,
+    openingLimit: s.openingLimit,
     dealerIndex: s.dealerIndex,
 
     deckCount: s.deck.length,

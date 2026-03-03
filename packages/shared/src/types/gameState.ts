@@ -11,6 +11,7 @@ export type LobbyPlayerPublic = {
 
 export type GameOptions = {
   teamMode: boolean;
+  increasingMeldLimit: boolean;
 };
 
 export type LobbyState = {
@@ -45,6 +46,8 @@ export type TurnStateServer = {
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
+  openingLimit: number;
+  notice?: TurnNotice;
   handHistory: HandResult[];
   dealerIndex: number;
 
@@ -83,6 +86,8 @@ export type TurnStateClient = {
   turnStep: TurnStep;
   takenDiscard?: { fromPlayerId: PlayerId; tile: Tile };
   openedBy: Record<PlayerId, "none" | "runsSets" | "pairs">;
+  openingLimit: number;
+  notice?: TurnNotice;
   dealerIndex: number;
 
   deckCount: number;
@@ -98,3 +103,11 @@ export type TurnStateClient = {
 };
 
 export type GameStateClient = LobbyState | TurnStateClient | HandEndState;
+
+export type TurnNotice =
+  | {
+      kind: "OPENING_LIMIT";
+      playerId: PlayerId;
+      required: number;
+      total: number;
+    };

@@ -390,17 +390,21 @@ body {
   gap: 24px;
   align-items: center;
 }
-.indicator-area, .deck-area {
+.indicator-area, .deck-area, .open-limit {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 4px;
 }
-.indicator-area .label, .deck-area .label {
+.indicator-area .label, .deck-area .label, .open-limit .label {
   font-size: 0.7rem;
   opacity: 0.7;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+.open-limit .limit-value {
+  font-weight: 700;
+  font-size: 0.85rem;
 }
 .deck-stack { position: relative; }
 .deck-count {
@@ -762,6 +766,24 @@ body {
   font-weight: 600;
   box-shadow: 0 4px 12px rgba(0,0,0,0.3);
   animation: slideIn 0.3s ease-out;
+}
+.notice-toast {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  z-index: 100;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  animation: slideInLeft 0.3s ease-out;
+}
+@keyframes slideInLeft {
+  from { transform: translateX(-100%); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
 }
 @keyframes slideIn {
   from { transform: translateX(100%); opacity: 0; }

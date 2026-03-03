@@ -181,8 +181,8 @@ export default function App() {
       if (!a.ok) alert(a.error);
     });
   }
-  function setOptions(teamMode: boolean) {
-    socket.emit(C2S_EVENT.roomSetOptions, { teamMode }, (a: SimpleAck) => {
+  function setOptions(opts: { teamMode: boolean; increasingMeldLimit: boolean }) {
+    socket.emit(C2S_EVENT.roomSetOptions, opts, (a: SimpleAck) => {
       if (!a.ok) alert(a.error);
     });
   }
@@ -272,6 +272,7 @@ export default function App() {
   /* ── Lobby ── */
   if (!gs || gs.phase === "lobby") {
     const teamMode = gs?.options?.teamMode ?? false;
+    const increasingMeldLimit = gs?.options?.increasingMeldLimit ?? false;
     const isHost = gs?.players?.[0]?.playerId === playerId;
     const seats = Array.from({ length: 4 }).map((_, idx) => {
       const player = gs?.players?.find((p) => p.seatIndex === idx) ?? null;
@@ -385,9 +386,18 @@ export default function App() {
               type="checkbox"
               checked={teamMode}
               disabled={!isHost}
-              onChange={(e) => setOptions(e.target.checked)}
+              onChange={(e) => setOptions({ teamMode: e.target.checked, increasingMeldLimit })}
             />
             Team mode (2v2)
+          </label>
+          <label className="lobby-toggle">
+            <input
+              type="checkbox"
+              checked={increasingMeldLimit}
+              disabled={!isHost}
+              onChange={(e) => setOptions({ teamMode, increasingMeldLimit: e.target.checked })}
+            />
+            Increasing meld limit
           </label>
           <div className="lobby-actions">
             <button onClick={() => setReady(true)}>Ready</button>
@@ -642,6 +652,21 @@ function GameBoard({
   const takenDiscard = state.takenDiscard;
   const takenTile = takenDiscard?.tile;
   const mustMeldDiscard = state.turnStep === "mustMeldDiscard";
+  const currentOpenLimit = state.options.increasingMeldLimit ? state.openingLimit + 1 : 101;
+  const noticeKey = state.notice
+    ? `${state.notice.kind}:${state.notice.playerId}:${state.notice.required}:${state.notice.total}`
+    : "";
+  const [noticeMessage, setNoticeMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!state.notice) return;
+    if (state.notice.kind === "OPENING_LIMIT") {
+      const name = playerMap[state.notice.playerId]?.name ?? state.notice.playerId;
+      setNoticeMessage(`${name} opening total ${state.notice.total} is below ${state.notice.required}`);
+    }
+    const t = setTimeout(() => setNoticeMessage(null), 4000);
+    return () => clearTimeout(t);
+  }, [noticeKey, playerMap, state.notice]);
   const groupedIds = useMemo(() => new Set(meldGroups.flat()), [meldGroups]);
   const visibleHand = state.yourHand.filter((t) => !groupedIds.has(t.id));
   const isPairsGrouping = meldGroups.length > 0 && meldGroups.every((g) => g.length === 2);
@@ -1118,6 +1143,12 @@ function GameBoard({
             </div>
             <span className="deck-count">{state.deckCount}</span>
           </div>
+          {state.options.increasingMeldLimit && (
+            <div className="open-limit">
+              <span className="label">Opening limit</span>
+              <span className="limit-value">{currentOpenLimit}</span>
+            </div>
+          )}
         </div>
 
         {/* Table melds */}
@@ -1414,6 +1445,11 @@ function GameBoard({
               </div>
             ));
           })()}
+        </div>
+      )}
+      {noticeMessage && (
+        <div className="notice-toast">
+          {noticeMessage}
         </div>
       )}
     </div>

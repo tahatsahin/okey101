@@ -244,16 +244,27 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const meldSet = validateMeldSet(meldObjs, state.okey);
       if (!meldSet.ok) throw new Error("INVALID_MELD_SET");
 
+      let openRes: ReturnType<typeof validateOpeningRequirements> | null = null;
       if (openedMode === "none") {
         // validate opening requirements
-        const openRes = validateOpeningRequirements(meldObjs, state.okey, true);
+        const minOpenTotal = state.options.increasingMeldLimit ? state.openingLimit + 1 : 101;
+        openRes = validateOpeningRequirements(meldObjs, state.okey, true, minOpenTotal);
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,
             points: 101,
             reason: "FAILED_OPENING"
           });
-          return { ...state, penalties };
+          const notice =
+            openRes.reason?.startsWith("opening total") && typeof openRes.total === "number"
+              ? {
+                  kind: "OPENING_LIMIT" as const,
+                  playerId: action.playerId,
+                  required: minOpenTotal,
+                  total: openRes.total
+                }
+              : undefined;
+          return { ...state, penalties, notice };
         }
       } else if (meldSet.mode !== openedMode) {
         throw new Error("MELD_STYLE_MISMATCH");
@@ -276,7 +287,21 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       if (openedMode === "none") openedBy[action.playerId] = meldSet.mode;
 
       // after opening, player must discard
-      const nextState: TurnStateServer = { ...state, hands: newHands, tableMelds: nextMelds, turnStep: "mustDiscard", openedBy };
+      const nextOpeningLimit =
+        state.options.increasingMeldLimit &&
+        openedMode === "none" &&
+        meldSet.mode === "runsSets" &&
+        typeof openRes?.total === "number"
+          ? Math.max(state.openingLimit, openRes.total)
+          : state.openingLimit;
+      const nextState: TurnStateServer = {
+        ...state,
+        hands: newHands,
+        tableMelds: nextMelds,
+        turnStep: "mustDiscard",
+        openedBy,
+        openingLimit: nextOpeningLimit
+      };
       if (allPairsOpened(openedBy)) {
         const penalties = nextState.penalties ?? [];
         return endHand(nextState, { reason: "ALL_PAIRS", penalties });
@@ -362,15 +387,26 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
       const openedMode = state.openedBy?.[action.playerId] ?? "none";
       const meldSet = validateMeldSet(meldObjs, state.okey);
       if (!meldSet.ok) throw new Error("INVALID_MELD_SET");
+      let openRes: ReturnType<typeof validateOpeningRequirements> | null = null;
       if (openedMode === "none") {
-        const openRes = validateOpeningRequirements(meldObjs, state.okey, false);
+        const minOpenTotal = state.options.increasingMeldLimit ? state.openingLimit + 1 : 101;
+        openRes = validateOpeningRequirements(meldObjs, state.okey, false, minOpenTotal);
         if (!openRes.ok) {
           const penalties = (state.penalties ?? []).concat({
             playerId: action.playerId,
             points: 101,
             reason: "FAILED_OPENING"
           });
-          return { ...state, penalties };
+          const notice =
+            openRes.reason?.startsWith("opening total") && typeof openRes.total === "number"
+              ? {
+                  kind: "OPENING_LIMIT" as const,
+                  playerId: action.playerId,
+                  required: minOpenTotal,
+                  total: openRes.total
+                }
+              : undefined;
+          return { ...state, penalties, notice };
         }
       } else if (meldSet.mode !== openedMode) {
         throw new Error("MELD_STYLE_MISMATCH");
@@ -401,7 +437,14 @@ export function reduce(state: GameStateServer, action: GameAction): GameStateSer
         hands: newHands,
         tableMelds: nextMelds,
         turnStep: "mustDiscard",
-        openedBy
+        openedBy,
+        openingLimit:
+          state.options.increasingMeldLimit &&
+          openedMode === "none" &&
+          meldSet.mode === "runsSets" &&
+          typeof openRes?.total === "number"
+            ? Math.max(state.openingLimit, openRes.total)
+            : state.openingLimit
       };
       if (taken?.tile) nextState.takenDiscard = undefined;
       if (allPairsOpened(openedBy)) {
