@@ -696,7 +696,9 @@ body {
   background: rgba(0,0,0,0.3);
   border-radius: 6px;
   padding: 3px 6px;
+  cursor: pointer;
 }
+.meld-preview-group:hover { background: rgba(0,0,0,0.45); }
 .meld-label {
   font-size: 0.65rem;
   opacity: 0.5;

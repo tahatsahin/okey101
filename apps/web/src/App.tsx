@@ -981,6 +981,9 @@ function GameBoard({
     setMeldGroups((prev) => [...prev, selectedIds]);
     setSelectedIds([]);
   }
+  function removeMeldGroup(idx: number) {
+    setMeldGroups((prev) => prev.filter((_, i) => i !== idx));
+  }
   function clearBuilder() {
     const returningIds = meldGroups.flat();
     setMeldGroups([]);
@@ -1544,7 +1547,12 @@ function GameBoard({
               {isPairsGrouping ? `${pairsCount} Pairs, 5 needed` : `Total: ${groupsTotal}`}
             </div>
             {meldGroups.map((group, i) => (
-              <div key={i} className="meld-preview-group">
+              <div
+                key={i}
+                className="meld-preview-group"
+                onClick={() => removeMeldGroup(i)}
+                title="Click to remove this group"
+              >
                 <span className="meld-label">
                   {isPairsGrouping ? `Pair ${i + 1}` : `Meld ${i + 1} · ${groupTotal(group)}`}
                 </span>
