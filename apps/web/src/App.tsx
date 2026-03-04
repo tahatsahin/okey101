@@ -3,7 +3,7 @@ import "./App.css";
 import { socket } from "./socket.ts";
 import type { ServerGameStatePayload } from "./types.ts";
 import type { Tile, TableMeldTile, GameOptions } from "@okey/shared";
-import { findBestTileGrouping, validateMeldFromHand, validateLayoff, canExtendAnyMeld, C2S_EVENT, C2S_EXTRA_EVENT, S2C_EVENT } from "@okey/shared";
+import { findBestTileGrouping, validateMeldFromHand, validateLayoff, canExtendAnyMeld, assignMeldTiles, C2S_EVENT, C2S_EXTRA_EVENT, S2C_EVENT } from "@okey/shared";
 
 type JoinAck =
   | { ok: true; playerId: string; roomId: string; token: string }
@@ -1125,9 +1125,14 @@ function GameBoard({
     }, 0);
   }
   const groupsTotal = meldGroups.reduce((sum, group) => sum + groupTotal(group), 0);
+  function sortGroupIds(ids: string[]): string[] {
+    const tiles = ids.map(tileById).filter((t): t is Tile => !!t);
+    if (tiles.length !== ids.length) return ids;
+    return assignMeldTiles(tiles, state.okey).map((t) => t.id);
+  }
   function addCurrentAsMeld() {
     if (selectedIds.length < 2) return;
-    setMeldGroups((prev) => [...prev, selectedIds]);
+    setMeldGroups((prev) => [...prev, sortGroupIds(selectedIds)]);
     setSelectedIds([]);
   }
   function removeMeldGroup(idx: number) {
@@ -1180,7 +1185,7 @@ function GameBoard({
   function applyGrouping(groupIds: string[][], orderIds: string[]) {
     setSelectedIds([]);
     setLayoffTargetId(null);
-    setMeldGroups(groupIds);
+    setMeldGroups(groupIds.map((g) => sortGroupIds(g)));
     setTilePositions((prev) => ({ ...prev, ...layoutOrder(orderIds) }));
     onReorder(orderIds);
   }
@@ -1267,9 +1272,9 @@ function GameBoard({
   function submitOpenMeld() {
     const allMelds =
       meldGroups.length > 0
-        ? [...meldGroups, ...(selectedIds.length >= 3 ? [selectedIds] : [])]
+        ? [...meldGroups, ...(selectedIds.length >= 3 ? [sortGroupIds(selectedIds)] : [])]
         : selectedIds.length >= 3
-        ? [selectedIds]
+        ? [sortGroupIds(selectedIds)]
         : [];
     if (allMelds.length === 0) return alert("Build at least one meld first");
     onOpenMeld(allMelds);
@@ -1787,7 +1792,9 @@ function GameBoard({
             <div className="meld-total">
               {isPairsGrouping ? `${pairsCount} Pairs, 5 needed` : `Total: ${groupsTotal}`}
             </div>
-            {meldGroups.map((group, i) => (
+            {meldGroups.map((group, i) => {
+              const ordered = sortGroupIds(group);
+              return (
               <div
                 key={i}
                 className="meld-preview-group"
@@ -1795,16 +1802,17 @@ function GameBoard({
                 title="Click to remove this group"
               >
                 <span className="meld-label">
-                  {isPairsGrouping ? `Pair ${i + 1}` : `Meld ${i + 1} · ${groupTotal(group)}`}
+                  {isPairsGrouping ? `Pair ${i + 1}` : `Meld ${i + 1} · ${groupTotal(ordered)}`}
                 </span>
-                {group.map((id) => {
+                {ordered.map((id) => {
                   const t = tileById(id);
                   return t ? (
                     <TileChip key={id} tile={t} disabled okey={state.okey} />
                   ) : null;
                 })}
               </div>
-            ))}
+            );
+            })}
           </div>
         )}
 
