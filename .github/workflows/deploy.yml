@@ -31,29 +31,18 @@ jobs:
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets.DO_SSH_KEY }}
-      - name: Deploy to VPS
-        env:
-          DO_HOST: ${{ secrets.DO_HOST }}
-          DO_USER: ${{ secrets.DO_USER }}
-          DO_PORT: ${{ secrets.DO_PORT }}
-          DO_APP_PATH: ${{ secrets.DO_APP_PATH }}
-          VITE_SERVER_URL: ${{ secrets.VITE_SERVER_URL }}
-          REPO_URL: https://github.com/${{ github.repository }}.git
-          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          ssh-private-key: ${{ secrets.SSH_KEY }}
+
+      - name: Add VPS to known_hosts
         run: |
-          PORT_ARG=""
-          if [ -n "$DO_PORT" ]; then
-            PORT_ARG="-p $DO_PORT"
-          fi
-          if [ -z "$GH_TOKEN" ]; then
-            echo "GH_TOKEN is required for private repo access"
-            exit 1
-          fi
-          if [ -z "$REPO_URL" ]; then
-            echo "REPO_URL is required"
-            exit 1
-          fi
-          AUTH_URL="https://x-access-token:${GH_TOKEN}@${REPO_URL#https://}"
-          ssh $PORT_ARG -o StrictHostKeyChecking=no $DO_USER@$DO_HOST \
-            "AUTH_URL='$AUTH_URL' REPO_URL='$REPO_URL' DO_APP_PATH='$DO_APP_PATH' VITE_SERVER_URL='$VITE_SERVER_URL' bash -c 'set -e; if [ -z \"\$DO_APP_PATH\" ]; then echo \"DO_APP_PATH is required\"; exit 1; fi; if [ ! -d \"\$DO_APP_PATH/.git\" ]; then mkdir -p \"\$DO_APP_PATH\"; cd \"\$DO_APP_PATH\"; git init; fi; cd \"\$DO_APP_PATH\"; if git remote get-url origin >/dev/null 2>&1; then git remote set-url origin \"\$AUTH_URL\"; else git remote add origin \"\$AUTH_URL\"; fi; git config --global --add safe.directory \"\$DO_APP_PATH\"; git fetch --all --prune; TARGET_REF=\"\"; if git symbolic-ref --quiet refs/remotes/origin/HEAD >/dev/null 2>&1; then TARGET_REF=\$(git symbolic-ref --quiet refs/remotes/origin/HEAD | sed \"s#^refs/remotes/##\"); fi; if [ -z \"\$TARGET_REF\" ]; then if git show-ref --verify --quiet refs/remotes/origin/main; then TARGET_REF=\"origin/main\"; elif git show-ref --verify --quiet refs/remotes/origin/master; then TARGET_REF=\"origin/master\"; fi; fi; if [ -z \"\$TARGET_REF\" ]; then echo \"No remote branch found on origin\"; exit 1; fi; git reset --hard \"\$TARGET_REF\"; git remote set-url origin \"\$REPO_URL\"; VITE_SERVER_URL=\"\$VITE_SERVER_URL\" docker compose up -d --build'"
+          mkdir -p ~/.ssh
+          ssh-keyscan -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        run: |
+          ssh -p ${{ secrets.SSH_PORT || 22 }} ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          set -e
+          cd ${{ secrets.VPS_APP_PATH }}
+          git pull origin main
+          docker compose up -d --build
+          EOF
